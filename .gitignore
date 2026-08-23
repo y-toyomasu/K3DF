@@ -1,1 +1,6 @@
 .env
+__pycache__/
+*.py[cod]
+state/defender_state.json
+state/events.ndjson
+state/scanner/latest.json

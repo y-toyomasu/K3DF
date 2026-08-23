@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
 import json
+import os
 import sys
+import tempfile
 import urllib.parse
 import urllib.request
 from datetime import datetime
@@ -103,6 +105,21 @@ def main():
     result["findings"] = scan_result["findings"]
 
     print(json.dumps(result, indent=2, ensure_ascii=False))
+
+    output_path = os.getenv("K3DF_SCANNER_RESULT_PATH")
+    if output_path:
+        directory = os.path.dirname(output_path) or "."
+        os.makedirs(directory, exist_ok=True)
+        fd, temporary_path = tempfile.mkstemp(prefix=".scanner-result-", suffix=".json", dir=directory)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                json.dump(result, handle, ensure_ascii=False)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_path, output_path)
+        finally:
+            if os.path.exists(temporary_path):
+                os.unlink(temporary_path)
 
 
 if __name__ == "__main__":

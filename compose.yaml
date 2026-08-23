@@ -22,6 +22,26 @@ services:
       - ./logs/nginx:/var/log/nginx
     depends_on:
       - web
+      - defender
+    restart: unless-stopped
+
+  defender:
+    build:
+      context: ./defender
+    container_name: k3df-defender
+    env_file:
+      - .env
+    environment:
+      K3DF_REASONING_INTERVAL_SEC: ${K3DF_REASONING_INTERVAL_SEC:-10}
+      K3DF_REASONING_EFFORT: ${K3DF_REASONING_EFFORT:-low}
+      K3DF_IGNORE_NETWORKS: ${K3DF_IGNORE_NETWORKS:-10.8.8.0/24}
+      K3DF_ACCESS_LOG_PATH: /var/log/nginx/access.log
+      K3DF_SCANNER_RESULT_PATH: /state/scanner/latest.json
+    expose:
+      - "8090"
+    volumes:
+      - ./logs/nginx:/var/log/nginx:ro
+      - ./state:/state
     restart: unless-stopped
 
   dashboard:
