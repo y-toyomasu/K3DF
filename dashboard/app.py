@@ -50,7 +50,7 @@ def activity_snapshot():
             paths[request_parts[1].split("?", 1)[0]] += 1
         suspicious_requests += suspicious
         if len(events) < 8:
-            events.append({"time": item["time"], "request": item["request"], "status": code,
+            events.append({"time": item["time"], "ip": item["ip"], "request": item["request"], "status": code,
                            "level": "alert" if suspicious or code >= 500 else "warning" if code >= 400 else "normal",
                            "suspicious": suspicious})
 

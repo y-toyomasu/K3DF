@@ -24,10 +24,11 @@
     h2 { font-size:.86rem; letter-spacing:.08em; margin:0 0 18px; color:#c8e6d7; }
     .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }
     .timeline { list-style:none; margin:0; padding:0; border-left:1px solid var(--line); } .timeline li { position:relative; padding:0 0 20px 22px; color:var(--muted); font-size:.8rem; line-height:1.5; } .timeline li::before { content:""; position:absolute; left:-5px; top:4px; width:8px; height:8px; border-radius:50%; background:var(--good); box-shadow:0 0 8px #40e59b; } .timeline strong { display:block; color:var(--text); }
-    .feed { list-style:none; padding:0; margin:0; max-height:290px; overflow:auto; } .feed li { display:grid; grid-template-columns:74px 1fr 42px; gap:8px; padding:9px 0; border-bottom:1px solid #183128; color:var(--muted); font-size:.72rem; } .feed .req { color:#d4e8dd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .code { text-align:right; color:var(--good); } .code.warning { color:var(--warn); } .code.alert { color:var(--bad); } .detection { color:var(--bad); }
+    .feed { list-style:none; padding:0; margin:0; max-height:290px; overflow:auto; } .feed-columns,.feed li { display:grid; grid-template-columns:152px 110px minmax(0,1fr) 42px; gap:8px; } .feed-columns { padding:0 0 8px; color:var(--muted); font-size:.64rem; letter-spacing:.06em; } .feed li { padding:9px 0; border-bottom:1px solid #183128; color:var(--muted); font-size:.72rem; } .feed li > :first-child { min-width:0; white-space:nowrap; font-variant-numeric:tabular-nums; } .feed .source { min-width:0; color:#a8c6bd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .feed .req { min-width:0; color:#d4e8dd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .code { text-align:right; color:var(--good); } .code.warning { color:var(--warn); } .code.alert { color:var(--bad); } .detection { color:var(--bad); }
     footer { margin-top:18px; color:#668277; font-size:.69rem; text-align:center; }
     .offline { color:var(--bad) !important; } .degraded { color:var(--warn) !important; }
     @media (max-width:720px) { header,.hero,.grid { grid-template-columns:1fr; display:grid; } header { justify-content:start; } .live { margin-top:-12px; } }
+    @media (max-width:560px) { .feed-columns { display:none; } .feed li { grid-template-columns:minmax(0,1fr) 42px; row-gap:4px; } .feed li > :nth-child(1), .feed li > :nth-child(2), .feed li > :nth-child(3) { grid-column:1; } .feed li > :nth-child(1) { grid-row:1; } .feed li > :nth-child(2) { grid-row:2; } .feed li > :nth-child(3) { grid-row:3; white-space:normal; overflow:visible; } .feed li > :nth-child(4) { grid-column:2; grid-row:1 / span 3; align-self:center; } }
   </style>
 </head>
 <body>
@@ -50,7 +51,7 @@
       </div>
     </section>
     <section class="grid">
-      <div class="card"><h2>LIVE REQUEST FEED</h2><ul class="feed" id="feed"><li>ログを取得しています…</li></ul></div>
+      <div class="card"><h2>LIVE REQUEST FEED</h2><div class="feed-columns"><span>TIME</span><span>SOURCE IP</span><span>EVENT</span><span>STATUS</span></div><ul class="feed" id="feed"><li>ログを取得しています…</li></ul></div>
       <div class="card"><h2>DEFENSE OPERATIONS</h2><ul class="timeline"><li><strong>監視対象</strong>K3DF Web Service / Nginx</li><li><strong>直近の確認</strong><span id="checked">--</span></li><li><strong>クライアント数</strong><span id="clients">--</span></li><li><strong>最多アクセス先</strong><span id="top-path">--</span></li><li><strong>4xx / 5xx 応答</strong><span id="http-errors">--</span></li></ul><p class="small">更新間隔: 5 秒<br>ダッシュボード稼働時間: <span id="uptime">--</span></p></div>
     </section>
     <footer>K3DF DEFENDER LAB · Authorized learning environment only</footer>
@@ -61,14 +62,17 @@
     function createEvent(event) {
       const item = document.createElement('li');
       const time = document.createElement('span');
+      const source = document.createElement('span');
       const request = document.createElement('span');
       const status = document.createElement('span');
       time.textContent = event.time.split(' ')[0];
+      source.className = 'source';
+      source.textContent = event.ip;
       request.className = `req${event.suspicious ? ' detection' : ''}`;
       request.textContent = event.suspicious ? `DETECTED · ${event.request}` : event.request;
       status.className = `code ${event.level}`;
       status.textContent = event.status;
-      item.append(time, request, status);
+      item.append(time, source, request, status);
       return item;
     }
     async function refresh() {
