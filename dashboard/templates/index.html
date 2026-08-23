@@ -37,7 +37,7 @@
   <main>
     <header>
       <div class="brand"><div class="mark">K3</div><div><h1>DEFENDER WATCH</h1><p class="eyebrow">K3DF · PUBLIC SERVICE STATUS</p></div></div>
-      <div class="live"><span class="dot"></span>LIVE MONITORING</div>
+      <div class="live" id="server-status"><span class="dot"></span>SERVER CONNECTING</div>
     </header>
     <section class="hero">
       <div class="card">
@@ -119,23 +119,28 @@
     function localTime(value) { return value ? new Date(value).toLocaleString('ja-JP') : '--'; }
     function addPostureItem(list, title, detail, meta = '') { const row = document.createElement('li'); const heading = document.createElement('strong'); heading.textContent = title; const body = document.createElement('span'); body.textContent = detail; row.append(heading, body); if (meta) { const note = document.createElement('span'); note.className = 'posture-meta'; note.textContent = meta; row.append(note); } list.append(row); }
     function renderPosture(defender) { const incidents = defender.incidents || []; const blocks = defender.blocked_sources || []; const capabilities = defender.capabilities || []; elements['posture-threat'].textContent = defender.threat_level || 'UNKNOWN'; elements['posture-incidents'].textContent = incidents.length; elements['posture-blocks'].textContent = blocks.length; elements['posture-exposure'].textContent = defender.exposure_count || 0; elements['posture-updated'].textContent = defender.available ? localTime(defender.updated_at) : 'Waiting'; elements.incidents.replaceChildren(); if (incidents.length) incidents.forEach(item => addPostureItem(elements.incidents, item.summary || item.incident_id || 'Incident', item.status || 'Active')); else addPostureItem(elements.incidents, 'No active incidents', '現在、アクティブなインシデントはありません。'); elements.containment.replaceChildren(); blocks.forEach(item => addPostureItem(elements.containment, `Blocked · ${item.ip || 'unknown'}`, item.reason || 'Temporary containment')); capabilities.forEach(item => addPostureItem(elements.containment, `Capability · ${item.capability || 'unknown'}`, `${item.status || 'observed'} · confidence ${item.confidence ?? '--'}`)); if (!blocks.length && !capabilities.length) addPostureItem(elements.containment, 'No active containment', '遮断または推定能力はありません。'); elements['defender-events'].replaceChildren(); const events = defender.recent_events || []; if (events.length) events.forEach(item => addPostureItem(elements['defender-events'], `${item.type || 'EVENT'} · ${item.summary || 'No summary'}`, '', localTime(item.ts))); else addPostureItem(elements['defender-events'], 'No defender events', 'イベント履歴を待機中です。'); }
+    function setServerStatus(online) { const indicator = document.getElementById('server-status'); indicator.textContent = online ? '● SERVER ONLINE' : '● SERVER OFFLINE'; indicator.className = `live${online ? '' : ' offline'}`; }
+    function renderDashboard(data) {
+      const state = data.status === 'protected' ? 'PROTECTED' : data.status === 'degraded' ? 'DEGRADED' : 'OFFLINE';
+      elements.state.textContent = state; elements.state.className = `state ${data.status}`;
+      elements.detail.textContent = data.detail; elements.service.textContent = data.service_status;
+      elements.latency.textContent = data.latency_ms === null ? '--' : `${data.latency_ms} ms`;
+      elements.checked.textContent = new Date(data.checked_at).toLocaleTimeString('ja-JP'); elements.uptime.textContent = showTime(data.uptime_seconds);
+      const activity = data.activity; elements.requests.textContent = activity.requests_observed; elements.suspicious.textContent = activity.suspicious_requests; elements.clients.textContent = activity.client_addresses; elements['top-path'].textContent = activity.top_path; elements['http-errors'].textContent = `${activity.client_errors} / ${activity.server_errors}`;
+      renderReasoning(data.reasoning);
+      renderPosture(data.defender);
+      elements.feed.replaceChildren();
+      if (activity.events.length) activity.events.forEach(event => elements.feed.append(createEvent(event)));
+      else { const placeholder = document.createElement('li'); placeholder.textContent = 'Nginx のアクセスログを待機中'; elements.feed.append(placeholder); }
+    }
     async function refresh() {
       try {
-        const data = await (await fetch('/api/status', {cache:'no-store'})).json();
-        const state = data.status === 'protected' ? 'PROTECTED' : data.status === 'degraded' ? 'DEGRADED' : 'OFFLINE';
-        elements.state.textContent = state; elements.state.className = `state ${data.status}`;
-        elements.detail.textContent = data.detail; elements.service.textContent = data.service_status;
-        elements.latency.textContent = data.latency_ms === null ? '--' : `${data.latency_ms} ms`;
-        elements.checked.textContent = new Date(data.checked_at).toLocaleTimeString('ja-JP'); elements.uptime.textContent = showTime(data.uptime_seconds);
-        const activity = data.activity; elements.requests.textContent = activity.requests_observed; elements.suspicious.textContent = activity.suspicious_requests; elements.clients.textContent = activity.client_addresses; elements['top-path'].textContent = activity.top_path; elements['http-errors'].textContent = `${activity.client_errors} / ${activity.server_errors}`;
-        renderReasoning(data.reasoning);
-        renderPosture(data.defender);
-        elements.feed.replaceChildren();
-        if (activity.events.length) activity.events.forEach(event => elements.feed.append(createEvent(event)));
-        else { const placeholder = document.createElement('li'); placeholder.textContent = 'Nginx のアクセスログを待機中'; elements.feed.append(placeholder); }
-      } catch (_) { elements.state.textContent = 'MONITOR ERROR'; elements.state.className = 'state offline'; elements.detail.textContent = 'ダッシュボードの状態取得に失敗しました。'; }
+        const response = await fetch('/api/status', {cache:'no-store'});
+        if (!response.ok) throw new Error('status');
+        setServerStatus(true); renderDashboard(await response.json());
+      } catch (_) { setServerStatus(false); }
     }
-    refresh(); setInterval(refresh, 5000);
+    window.addEventListener('online', refresh); window.addEventListener('offline', refresh); refresh(); setInterval(refresh, 5000);
   </script>
 </body>
 </html>
