@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import time
@@ -13,6 +14,8 @@ app = Flask(__name__)
 
 TARGET_HEALTH_URL = os.getenv("TARGET_HEALTH_URL", "http://web:8080/health")
 ACCESS_LOG_PATH = os.getenv("ACCESS_LOG_PATH", "/var/log/nginx/access.log")
+DEFENDER_STATE_PATH = os.getenv("DEFENDER_STATE_PATH", "/state/defender_state.json")
+DEFENDER_EVENTS_PATH = os.getenv("DEFENDER_EVENTS_PATH", "/state/events.ndjson")
 CHECK_TIMEOUT_SECONDS = 2
 started_at = time.monotonic()
 SUSPICIOUS_REQUEST = re.compile(
@@ -62,6 +65,91 @@ def activity_snapshot():
             "events": events}
 
 
+def _read_json(path, default):
+    try:
+        with open(path, encoding="utf-8") as handle:
+            return json.load(handle)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return default
+
+
+def _recent_reasoning_event():
+    try:
+        with open(DEFENDER_EVENTS_PATH, encoding="utf-8", errors="replace") as handle:
+            lines = handle.readlines()[-100:]
+    except OSError:
+        return None
+    for line in reversed(lines):
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if event.get("type") in {"REASONING_END", "REASONING_START", "ERROR"}:
+            return event
+    return None
+
+
+def reasoning_snapshot():
+    """Expose Kimi's persisted defense assessment, not private chain-of-thought."""
+    state = _read_json(DEFENDER_STATE_PATH, {})
+    event = _recent_reasoning_event()
+    analysis = event.get("data", {}) if event and event.get("type") == "REASONING_END" else {}
+    return {
+        "available": bool(state),
+        "cycle": state.get("cycle", 0),
+        "phase": state.get("defense", {}).get("current_phase", "WAITING"),
+        "threat_level": state.get("threat_level", "--"),
+        "updated_at": state.get("updated_at"),
+        "summary": analysis.get("summary") or (event or {}).get("summary") or "まだ防御分析は実行されていません。",
+        "confidence": analysis.get("confidence"),
+        "evidence_count": state.get("metrics", {}).get("evidence_count", 0),
+        "hypotheses": state.get("defense", {}).get("unresolved_hypotheses", [])[:4],
+        "watch_conditions": state.get("defense", {}).get("watch_conditions", [])[:4],
+        "scenarios": state.get("defense", {}).get("scenarios", [])[:4],
+    }
+
+
+def defender_snapshot():
+    """Read the Defender's persisted view without importing or controlling it."""
+    unavailable = {
+        "available": False, "threat_level": "UNKNOWN", "phase": "--", "updated_at": None,
+        "metrics": {}, "incidents": [], "blocked_sources": [], "capabilities": [],
+        "exposure_count": 0, "recent_events": [],
+    }
+    try:
+        with open(DEFENDER_STATE_PATH, encoding="utf-8") as state_file:
+            state = json.load(state_file)
+        if state.get("schema_version") != "1.0":
+            return unavailable
+    except (OSError, ValueError, json.JSONDecodeError):
+        return unavailable
+
+    try:
+        with open(DEFENDER_EVENTS_PATH, encoding="utf-8") as events_file:
+            lines = events_file.readlines()[-80:]
+        recent_events = [json.loads(line) for line in lines if line.strip()][-6:]
+        recent_events.reverse()
+    except (OSError, ValueError, json.JSONDecodeError):
+        recent_events = []
+
+    exposure = state.get("exposure", {})
+    exposure_count = sum(len(exposure.get(key, [])) for key in
+                         ("endpoints", "parameters", "vulnerabilities", "exposed_assets", "attack_paths"))
+    defense = state.get("defense", {})
+    return {
+        "available": True,
+        "threat_level": state.get("threat_level", "UNKNOWN"),
+        "phase": defense.get("current_phase", "DETECT"),
+        "updated_at": state.get("updated_at"),
+        "metrics": state.get("metrics", {}),
+        "incidents": state.get("active_incidents", [])[:5],
+        "blocked_sources": defense.get("blocked_sources", [])[:5],
+        "capabilities": state.get("attacker_state", {}).get("estimated_capabilities", [])[:6],
+        "exposure_count": exposure_count,
+        "recent_events": recent_events,
+    }
+
+
 def health_snapshot():
     checked_at = datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
     started = time.perf_counter()
@@ -98,6 +186,8 @@ def status():
     snapshot = health_snapshot()
     snapshot["uptime_seconds"] = round(time.monotonic() - started_at)
     snapshot["activity"] = activity_snapshot()
+    snapshot["reasoning"] = reasoning_snapshot()
+    snapshot["defender"] = defender_snapshot()
     return jsonify(snapshot)
 
 

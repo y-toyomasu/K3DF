@@ -51,10 +51,13 @@ services:
     environment:
       TARGET_HEALTH_URL: http://web:8080/health
       ACCESS_LOG_PATH: /var/log/nginx/access.log
+      DEFENDER_STATE_PATH: /state/defender_state.json
+      DEFENDER_EVENTS_PATH: /state/events.ndjson
     ports:
       - "8888:8888"
     volumes:
       - ./logs/nginx:/var/log/nginx:ro
+      - ./state:/state:ro
     depends_on:
       - web
       - nginx

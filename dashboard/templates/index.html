@@ -23,11 +23,13 @@
     .label { color:var(--muted); font-size:.69rem; letter-spacing:.09em; }
     h2 { font-size:.86rem; letter-spacing:.08em; margin:0 0 18px; color:#c8e6d7; }
     .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }
+    .reasoning { margin-top:16px; } .reasoning-summary { margin:0 0 18px; color:var(--text); font-size:.9rem; line-height:1.65; } .reasoning-meta { display:flex; flex-wrap:wrap; gap:12px 22px; margin-bottom:20px; color:var(--muted); font-size:.75rem; } .reasoning-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; } .reasoning-grid h3 { margin:0 0 10px; color:#c8e6d7; font-size:.72rem; letter-spacing:.08em; } .reasoning-list { list-style:none; padding:0; margin:0; } .reasoning-list li { padding:9px 0; border-top:1px solid #183128; color:var(--muted); font-size:.75rem; line-height:1.5; } .reasoning-list li:first-child { border-top:0; } .empty { color:var(--muted); }
+    .posture { margin-top:16px; } .posture-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; } .posture-grid h3 { margin:0 0 10px; color:#c8e6d7; font-size:.72rem; letter-spacing:.08em; } .posture-list { list-style:none; padding:0; margin:0; max-height:200px; overflow:auto; } .posture-list li { padding:9px 0; border-top:1px solid #183128; color:var(--muted); font-size:.75rem; line-height:1.5; } .posture-list li:first-child { border-top:0; } .posture-list strong { display:block; color:var(--text); } .posture-meta { color:#76968a; font-size:.68rem; }
     .timeline { list-style:none; margin:0; padding:0; border-left:1px solid var(--line); } .timeline li { position:relative; padding:0 0 20px 22px; color:var(--muted); font-size:.8rem; line-height:1.5; } .timeline li::before { content:""; position:absolute; left:-5px; top:4px; width:8px; height:8px; border-radius:50%; background:var(--good); box-shadow:0 0 8px #40e59b; } .timeline strong { display:block; color:var(--text); }
     .feed { list-style:none; padding:0; margin:0; max-height:290px; overflow:auto; } .feed-columns,.feed li { display:grid; grid-template-columns:152px 110px minmax(0,1fr) 42px; gap:8px; } .feed-columns { padding:0 0 8px; color:var(--muted); font-size:.64rem; letter-spacing:.06em; } .feed li { padding:9px 0; border-bottom:1px solid #183128; color:var(--muted); font-size:.72rem; } .feed li > :first-child { min-width:0; white-space:nowrap; font-variant-numeric:tabular-nums; } .feed .source { min-width:0; color:#a8c6bd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .feed .req { min-width:0; color:#d4e8dd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .code { text-align:right; color:var(--good); } .code.warning { color:var(--warn); } .code.alert { color:var(--bad); } .detection { color:var(--bad); }
     footer { margin-top:18px; color:#668277; font-size:.69rem; text-align:center; }
     .offline { color:var(--bad) !important; } .degraded { color:var(--warn) !important; }
-    @media (max-width:720px) { header,.hero,.grid { grid-template-columns:1fr; display:grid; } header { justify-content:start; } .live { margin-top:-12px; } }
+    @media (max-width:720px) { header,.hero,.grid,.reasoning-grid,.posture-grid { grid-template-columns:1fr; display:grid; } header { justify-content:start; } .live { margin-top:-12px; } }
     @media (max-width:560px) { .feed-columns { display:none; } .feed li { grid-template-columns:minmax(0,1fr) 42px; row-gap:4px; } .feed li > :nth-child(1), .feed li > :nth-child(2), .feed li > :nth-child(3) { grid-column:1; } .feed li > :nth-child(1) { grid-row:1; } .feed li > :nth-child(2) { grid-row:2; } .feed li > :nth-child(3) { grid-row:3; white-space:normal; overflow:visible; } .feed li > :nth-child(4) { grid-column:2; grid-row:1 / span 3; align-self:center; } }
   </style>
 </head>
@@ -54,10 +56,29 @@
       <div class="card"><h2>LIVE REQUEST FEED</h2><div class="feed-columns"><span>TIME</span><span>SOURCE IP</span><span>EVENT</span><span>STATUS</span></div><ul class="feed" id="feed"><li>ログを取得しています…</li></ul></div>
       <div class="card"><h2>DEFENSE OPERATIONS</h2><ul class="timeline"><li><strong>監視対象</strong>K3DF Web Service / Nginx</li><li><strong>直近の確認</strong><span id="checked">--</span></li><li><strong>クライアント数</strong><span id="clients">--</span></li><li><strong>最多アクセス先</strong><span id="top-path">--</span></li><li><strong>4xx / 5xx 応答</strong><span id="http-errors">--</span></li></ul><p class="small">更新間隔: 5 秒<br>ダッシュボード稼働時間: <span id="uptime">--</span></p></div>
     </section>
+    <section class="card reasoning" aria-labelledby="reasoning-title">
+      <h2 id="reasoning-title">KIMI DEFENSE ASSESSMENT</h2>
+      <p class="reasoning-summary" id="reasoning-summary">防御エージェントの分析結果を待機中です。</p>
+      <div class="reasoning-meta"><span>THREAT: <b id="reasoning-threat">--</b></span><span>PHASE: <b id="reasoning-phase">--</b></span><span>CYCLE: <b id="reasoning-cycle">--</b></span><span>EVIDENCE: <b id="reasoning-evidence">--</b></span><span>CONFIDENCE: <b id="reasoning-confidence">--</b></span></div>
+      <div class="reasoning-grid">
+        <div><h3>UNRESOLVED HYPOTHESES</h3><ul class="reasoning-list" id="hypotheses"><li class="empty">--</li></ul></div>
+        <div><h3>WATCH CONDITIONS</h3><ul class="reasoning-list" id="watch-conditions"><li class="empty">--</li></ul></div>
+        <div><h3>NEXT DEFENSE OPTIONS</h3><ul class="reasoning-list" id="scenarios"><li class="empty">--</li></ul></div>
+      </div>
+    </section>
+    <section class="card posture" aria-labelledby="posture-title">
+      <h2 id="posture-title">DEFENSE POSTURE</h2>
+      <div class="reasoning-meta"><span>THREAT: <b id="posture-threat">--</b></span><span>ACTIVE INCIDENTS: <b id="posture-incidents">--</b></span><span>ACTIVE BLOCKS: <b id="posture-blocks">--</b></span><span>EXPOSURE ITEMS: <b id="posture-exposure">--</b></span><span>LAST STATE UPDATE: <b id="posture-updated">--</b></span></div>
+      <div class="posture-grid">
+        <div><h3>ACTIVE INCIDENTS</h3><ul class="posture-list" id="incidents"><li class="empty">--</li></ul></div>
+        <div><h3>CONTAINMENT &amp; CAPABILITIES</h3><ul class="posture-list" id="containment"><li class="empty">--</li></ul></div>
+        <div><h3>RECENT DEFENDER EVENTS</h3><ul class="posture-list" id="defender-events"><li class="empty">--</li></ul></div>
+      </div>
+    </section>
     <footer>K3DF DEFENDER LAB · Authorized learning environment only</footer>
   </main>
   <script>
-    const elements = Object.fromEntries(['state','detail','service','latency','requests','suspicious','checked','uptime','clients','top-path','http-errors','feed'].map(id => [id, document.getElementById(id)]));
+    const elements = Object.fromEntries(['state','detail','service','latency','requests','suspicious','checked','uptime','clients','top-path','http-errors','feed','reasoning-summary','reasoning-threat','reasoning-phase','reasoning-cycle','reasoning-evidence','reasoning-confidence','hypotheses','watch-conditions','scenarios','posture-threat','posture-incidents','posture-blocks','posture-exposure','posture-updated','incidents','containment','defender-events'].map(id => [id, document.getElementById(id)]));
     function showTime(seconds) { const m = Math.floor(seconds / 60); return `${m}m ${seconds % 60}s`; }
     function createEvent(event) {
       const item = document.createElement('li');
@@ -75,6 +96,29 @@
       item.append(time, source, request, status);
       return item;
     }
+    function labelFor(item) {
+      if (typeof item === 'string') return item;
+      return item.summary || item.reason || item.hypothesis || item.name || item.scenario_id || JSON.stringify(item);
+    }
+    function renderReasoningList(element, items) {
+      element.replaceChildren();
+      if (!items.length) { const empty = document.createElement('li'); empty.className = 'empty'; empty.textContent = '該当なし'; element.append(empty); return; }
+      items.forEach(item => { const row = document.createElement('li'); row.textContent = labelFor(item); element.append(row); });
+    }
+    function renderReasoning(reasoning) {
+      elements['reasoning-summary'].textContent = reasoning.summary;
+      elements['reasoning-threat'].textContent = reasoning.threat_level;
+      elements['reasoning-phase'].textContent = reasoning.phase;
+      elements['reasoning-cycle'].textContent = reasoning.cycle;
+      elements['reasoning-evidence'].textContent = reasoning.evidence_count;
+      elements['reasoning-confidence'].textContent = reasoning.confidence === null ? '--' : reasoning.confidence === undefined ? '--' : `${Math.round(reasoning.confidence * 100)}%`;
+      renderReasoningList(elements.hypotheses, reasoning.hypotheses);
+      renderReasoningList(elements['watch-conditions'], reasoning.watch_conditions);
+      renderReasoningList(elements.scenarios, reasoning.scenarios);
+    }
+    function localTime(value) { return value ? new Date(value).toLocaleString('ja-JP') : '--'; }
+    function addPostureItem(list, title, detail, meta = '') { const row = document.createElement('li'); const heading = document.createElement('strong'); heading.textContent = title; const body = document.createElement('span'); body.textContent = detail; row.append(heading, body); if (meta) { const note = document.createElement('span'); note.className = 'posture-meta'; note.textContent = meta; row.append(note); } list.append(row); }
+    function renderPosture(defender) { const incidents = defender.incidents || []; const blocks = defender.blocked_sources || []; const capabilities = defender.capabilities || []; elements['posture-threat'].textContent = defender.threat_level || 'UNKNOWN'; elements['posture-incidents'].textContent = incidents.length; elements['posture-blocks'].textContent = blocks.length; elements['posture-exposure'].textContent = defender.exposure_count || 0; elements['posture-updated'].textContent = defender.available ? localTime(defender.updated_at) : 'Waiting'; elements.incidents.replaceChildren(); if (incidents.length) incidents.forEach(item => addPostureItem(elements.incidents, item.summary || item.incident_id || 'Incident', item.status || 'Active')); else addPostureItem(elements.incidents, 'No active incidents', '現在、アクティブなインシデントはありません。'); elements.containment.replaceChildren(); blocks.forEach(item => addPostureItem(elements.containment, `Blocked · ${item.ip || 'unknown'}`, item.reason || 'Temporary containment')); capabilities.forEach(item => addPostureItem(elements.containment, `Capability · ${item.capability || 'unknown'}`, `${item.status || 'observed'} · confidence ${item.confidence ?? '--'}`)); if (!blocks.length && !capabilities.length) addPostureItem(elements.containment, 'No active containment', '遮断または推定能力はありません。'); elements['defender-events'].replaceChildren(); const events = defender.recent_events || []; if (events.length) events.forEach(item => addPostureItem(elements['defender-events'], `${item.type || 'EVENT'} · ${item.summary || 'No summary'}`, '', localTime(item.ts))); else addPostureItem(elements['defender-events'], 'No defender events', 'イベント履歴を待機中です。'); }
     async function refresh() {
       try {
         const data = await (await fetch('/api/status', {cache:'no-store'})).json();
@@ -84,6 +128,8 @@
         elements.latency.textContent = data.latency_ms === null ? '--' : `${data.latency_ms} ms`;
         elements.checked.textContent = new Date(data.checked_at).toLocaleTimeString('ja-JP'); elements.uptime.textContent = showTime(data.uptime_seconds);
         const activity = data.activity; elements.requests.textContent = activity.requests_observed; elements.suspicious.textContent = activity.suspicious_requests; elements.clients.textContent = activity.client_addresses; elements['top-path'].textContent = activity.top_path; elements['http-errors'].textContent = `${activity.client_errors} / ${activity.server_errors}`;
+        renderReasoning(data.reasoning);
+        renderPosture(data.defender);
         elements.feed.replaceChildren();
         if (activity.events.length) activity.events.forEach(event => elements.feed.append(createEvent(event)));
         else { const placeholder = document.createElement('li'); placeholder.textContent = 'Nginx のアクセスログを待機中'; elements.feed.append(placeholder); }
