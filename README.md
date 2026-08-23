@@ -31,6 +31,12 @@ Raspberry Pi 上で環境を準備する場合は、[K3Defnder-K3Atacker-infra](
 docker compose up --build -d
 ```
 
+開発時は `env.example` を `.env` としてコピーし、`environment=dev` を設定します。次のコマンドで起動すると、`web/app.py` の変更がコンテナへ同期され、Flask が自動で再起動します。
+
+```bash
+docker compose watch
+```
+
 起動後、次のURLにアクセスします。
 
 - アプリケーション: `http://localhost/`
