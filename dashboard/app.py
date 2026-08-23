@@ -3,7 +3,9 @@ import re
 import time
 import urllib.error
 import urllib.request
+from collections import Counter
 from datetime import datetime, timezone
+from urllib.parse import unquote_plus
 
 from flask import Flask, jsonify, render_template
 
@@ -13,6 +15,10 @@ TARGET_HEALTH_URL = os.getenv("TARGET_HEALTH_URL", "http://web:8080/health")
 ACCESS_LOG_PATH = os.getenv("ACCESS_LOG_PATH", "/var/log/nginx/access.log")
 CHECK_TIMEOUT_SECONDS = 2
 started_at = time.monotonic()
+SUSPICIOUS_REQUEST = re.compile(
+    r"(?:\bunion\b\s+(?:all\s+)?\bselect\b|\bselect\b.+\bfrom\b|\bor\b\s+[\w'\"]+\s*=\s*[\w'\"]+|--|/\*|\bsleep\s*\(|\bdrop\b\s+\btable\b)",
+    re.IGNORECASE,
+)
 
 
 def activity_snapshot():
@@ -26,6 +32,8 @@ def activity_snapshot():
     events = []
     status_codes = []
     addresses = set()
+    paths = Counter()
+    suspicious_requests = 0
     pattern = re.compile(r'^(?P<ip>\S+).*?\[(?P<time>[^]]+)] "(?P<request>[^"]*)" (?P<status>\d{3})')
     for line in reversed(lines):
         match = pattern.search(line)
@@ -33,15 +41,25 @@ def activity_snapshot():
             continue
         item = match.groupdict()
         code = int(item["status"])
+        decoded_request = unquote_plus(item["request"])
+        suspicious = bool(SUSPICIOUS_REQUEST.search(decoded_request))
         status_codes.append(code)
         addresses.add(item["ip"])
+        request_parts = item["request"].split()
+        if len(request_parts) >= 2:
+            paths[request_parts[1].split("?", 1)[0]] += 1
+        suspicious_requests += suspicious
         if len(events) < 8:
             events.append({"time": item["time"], "request": item["request"], "status": code,
-                           "level": "alert" if code >= 500 else "warning" if code >= 400 else "normal"})
+                           "level": "alert" if suspicious or code >= 500 else "warning" if code >= 400 else "normal",
+                           "suspicious": suspicious})
 
     return {"requests_observed": len(status_codes), "client_addresses": len(addresses),
             "client_errors": sum(400 <= code < 500 for code in status_codes),
-            "server_errors": sum(code >= 500 for code in status_codes), "events": events}
+            "server_errors": sum(code >= 500 for code in status_codes),
+            "suspicious_requests": suspicious_requests,
+            "top_path": paths.most_common(1)[0][0] if paths else "--",
+            "events": events}
 
 
 def health_snapshot():
@@ -88,4 +106,5 @@ def health():
     return {"status": "ok"}
 
 
-app.run(host="0.0.0.0", port=8888)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8888)

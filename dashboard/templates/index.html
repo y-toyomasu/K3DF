@@ -24,7 +24,7 @@
     h2 { font-size:.86rem; letter-spacing:.08em; margin:0 0 18px; color:#c8e6d7; }
     .grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }
     .timeline { list-style:none; margin:0; padding:0; border-left:1px solid var(--line); } .timeline li { position:relative; padding:0 0 20px 22px; color:var(--muted); font-size:.8rem; line-height:1.5; } .timeline li::before { content:""; position:absolute; left:-5px; top:4px; width:8px; height:8px; border-radius:50%; background:var(--good); box-shadow:0 0 8px #40e59b; } .timeline strong { display:block; color:var(--text); }
-    .feed { list-style:none; padding:0; margin:0; max-height:290px; overflow:auto; } .feed li { display:grid; grid-template-columns:74px 1fr 42px; gap:8px; padding:9px 0; border-bottom:1px solid #183128; color:var(--muted); font-size:.72rem; } .feed .req { color:#d4e8dd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .code { text-align:right; color:var(--good); } .code.warning { color:var(--warn); } .code.alert { color:var(--bad); }
+    .feed { list-style:none; padding:0; margin:0; max-height:290px; overflow:auto; } .feed li { display:grid; grid-template-columns:74px 1fr 42px; gap:8px; padding:9px 0; border-bottom:1px solid #183128; color:var(--muted); font-size:.72rem; } .feed .req { color:#d4e8dd; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; } .code { text-align:right; color:var(--good); } .code.warning { color:var(--warn); } .code.alert { color:var(--bad); } .detection { color:var(--bad); }
     footer { margin-top:18px; color:#668277; font-size:.69rem; text-align:center; }
     .offline { color:var(--bad) !important; } .degraded { color:var(--warn) !important; }
     @media (max-width:720px) { header,.hero,.grid { grid-template-columns:1fr; display:grid; } header { justify-content:start; } .live { margin-top:-12px; } }
@@ -46,18 +46,31 @@
         <div class="metric"><span class="label">SERVICE</span><b id="service">--</b></div>
         <div class="metric"><span class="label">RESPONSE TIME</span><b id="latency">--</b></div>
         <div class="metric"><span class="label">OBSERVED REQUESTS</span><b id="requests">--</b></div>
-        <div class="metric"><span class="label">SERVER ERRORS</span><b id="errors">--</b></div>
+        <div class="metric"><span class="label">SUSPICIOUS REQUESTS</span><b id="suspicious">--</b></div>
       </div>
     </section>
     <section class="grid">
       <div class="card"><h2>LIVE REQUEST FEED</h2><ul class="feed" id="feed"><li>ログを取得しています…</li></ul></div>
-      <div class="card"><h2>DEFENSE OPERATIONS</h2><ul class="timeline"><li><strong>監視対象</strong>K3DF Web Service / Nginx</li><li><strong>直近の確認</strong><span id="checked">--</span></li><li><strong>クライアント数</strong><span id="clients">--</span></li><li><strong>4xx 応答</strong><span id="client-errors">--</span></li></ul><p class="small">更新間隔: 5 秒<br>ダッシュボード稼働時間: <span id="uptime">--</span></p></div>
+      <div class="card"><h2>DEFENSE OPERATIONS</h2><ul class="timeline"><li><strong>監視対象</strong>K3DF Web Service / Nginx</li><li><strong>直近の確認</strong><span id="checked">--</span></li><li><strong>クライアント数</strong><span id="clients">--</span></li><li><strong>最多アクセス先</strong><span id="top-path">--</span></li><li><strong>4xx / 5xx 応答</strong><span id="http-errors">--</span></li></ul><p class="small">更新間隔: 5 秒<br>ダッシュボード稼働時間: <span id="uptime">--</span></p></div>
     </section>
     <footer>K3DF DEFENDER LAB · Authorized learning environment only</footer>
   </main>
   <script>
-    const elements = Object.fromEntries(['state','detail','service','latency','requests','errors','checked','uptime','clients','client-errors','feed'].map(id => [id, document.getElementById(id)]));
+    const elements = Object.fromEntries(['state','detail','service','latency','requests','suspicious','checked','uptime','clients','top-path','http-errors','feed'].map(id => [id, document.getElementById(id)]));
     function showTime(seconds) { const m = Math.floor(seconds / 60); return `${m}m ${seconds % 60}s`; }
+    function createEvent(event) {
+      const item = document.createElement('li');
+      const time = document.createElement('span');
+      const request = document.createElement('span');
+      const status = document.createElement('span');
+      time.textContent = event.time.split(' ')[0];
+      request.className = `req${event.suspicious ? ' detection' : ''}`;
+      request.textContent = event.suspicious ? `DETECTED · ${event.request}` : event.request;
+      status.className = `code ${event.level}`;
+      status.textContent = event.status;
+      item.append(time, request, status);
+      return item;
+    }
     async function refresh() {
       try {
         const data = await (await fetch('/api/status', {cache:'no-store'})).json();
@@ -66,8 +79,10 @@
         elements.detail.textContent = data.detail; elements.service.textContent = data.service_status;
         elements.latency.textContent = data.latency_ms === null ? '--' : `${data.latency_ms} ms`;
         elements.checked.textContent = new Date(data.checked_at).toLocaleTimeString('ja-JP'); elements.uptime.textContent = showTime(data.uptime_seconds);
-        const activity = data.activity; elements.requests.textContent = activity.requests_observed; elements.errors.textContent = activity.server_errors; elements.clients.textContent = activity.client_addresses; elements['client-errors'].textContent = activity.client_errors;
-        elements.feed.innerHTML = activity.events.length ? activity.events.map(e => `<li><span>${e.time.split(' ')[0]}</span><span class="req">${e.request}</span><span class="code ${e.level}">${e.status}</span></li>`).join('') : '<li><span>--</span><span class="req">Nginx のアクセスログを待機中</span><span class="code">--</span></li>';
+        const activity = data.activity; elements.requests.textContent = activity.requests_observed; elements.suspicious.textContent = activity.suspicious_requests; elements.clients.textContent = activity.client_addresses; elements['top-path'].textContent = activity.top_path; elements['http-errors'].textContent = `${activity.client_errors} / ${activity.server_errors}`;
+        elements.feed.replaceChildren();
+        if (activity.events.length) activity.events.forEach(event => elements.feed.append(createEvent(event)));
+        else { const placeholder = document.createElement('li'); placeholder.textContent = 'Nginx のアクセスログを待機中'; elements.feed.append(placeholder); }
       } catch (_) { elements.state.textContent = 'MONITOR ERROR'; elements.state.className = 'state offline'; elements.detail.textContent = 'ダッシュボードの状態取得に失敗しました。'; }
     }
     refresh(); setInterval(refresh, 5000);
