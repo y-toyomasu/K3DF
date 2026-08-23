@@ -7,15 +7,11 @@ services:
     container_name: k3df-web
     env_file:
       - .env
-    develop:
-      watch:
-        - action: sync
-          path: ./web/app.py
-          target: /app/app.py
     expose:
       - "8080"
     volumes:
       - ./data:/app/data
+      - ./web/app.py:/app/app.py:ro
     restart: unless-stopped
 
   nginx:
