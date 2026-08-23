@@ -12,6 +12,7 @@ K3DF (K3 Defender Lab) は、Webアプリケーションの脆弱性を安全な
 .
 ├── compose.yaml       # WebアプリケーションとNginxのコンテナ定義
 ├── web/               # 意図的に脆弱なFlaskアプリケーション
+├── dashboard/         # 防御状況を可視化する独立アプリ
 ├── scanner/           # SQLインジェクション検証用スキャナー
 ├── nginx/             # リバースプロキシ設定
 ├── data/              # 学習用SQLiteデータベース
@@ -42,6 +43,7 @@ docker-compose up --build
 - アプリケーション: `http://localhost/`
 - ヘルスチェック: `http://localhost/health`
 - 顧客データの例: `http://localhost/customer?id=1`
+- 防御状況ダッシュボード: `http://localhost:8888/`
 
 停止するには、以下を実行します。
 
@@ -67,6 +69,12 @@ Nginx のアクセスログとエラーログは、以下に保存されます�
 logs/nginx/access.log
 logs/nginx/error.log
 ```
+
+## 防御状況ダッシュボード
+
+K3DF は防御側の状況だけを扱います。独立した `dashboard` サービスが TCP ポート `8888` で稼働し、Web サーバーのヘルスチェック、応答時間、Nginx の直近リクエスト、4xx/5xx 応答数を 5 秒ごとに更新して可視化します。
+
+攻撃側のステータスおよび操作履歴は、K3AT リポジトリで管理します。
 
 ## ライセンス
 

@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   web:
     build:
@@ -24,5 +22,21 @@ services:
       - ./logs/nginx:/var/log/nginx
     depends_on:
       - web
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: ./dashboard
+    container_name: k3df-dashboard
+    environment:
+      TARGET_HEALTH_URL: http://web:8080/health
+      ACCESS_LOG_PATH: /var/log/nginx/access.log
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./logs/nginx:/var/log/nginx:ro
+    depends_on:
+      - web
+      - nginx
     restart: unless-stopped
 
