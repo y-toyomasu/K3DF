@@ -4,6 +4,8 @@ import tempfile
 import uuid
 from datetime import datetime, timezone
 
+from capability_graph import default_flag_objectives, default_graph, normalize_flags, normalize_graph
+
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -11,12 +13,14 @@ def now_iso():
 
 def default_state(config):
     return {
-        "schema_version": "1.0",
+        "schema_version": "2.0",
         "updated_at": now_iso(),
         "cycle": 0,
         "reasoning_interval_sec": config.reasoning_interval_sec,
         "threat_level": "LOW",
         "attacker_state": {"estimated_capabilities": [], "achieved_attack_tactics": [], "achieved_attack_techniques": []},
+        "capability_graph": default_graph(),
+        "flag_objectives": default_flag_objectives(),
         "exposure": {"endpoints": [], "parameters": [], "vulnerabilities": [], "exposed_assets": [], "attack_paths": []},
         "defender_state": {
             "available_capabilities": ["observe_http_logs", "inspect_scanner_results", "active_scan", "block_ip", "verify_containment"],
@@ -43,13 +47,22 @@ class StateStore:
         try:
             with open(self.state_path, encoding="utf-8") as handle:
                 state = json.load(handle)
-            if state.get("schema_version") != "1.0":
+            if state.get("schema_version") not in {"1.0", "2.0"}:
                 raise ValueError("unsupported state schema")
-            return state
+            return self._migrate(state)
         except (OSError, ValueError, json.JSONDecodeError):
             state = default_state(self.config)
             self.save(state)
             return state
+
+    def _migrate(self, state):
+        """Retain legacy fields while making the versioned graph canonical."""
+        state = dict(state)
+        state["schema_version"] = "2.0"
+        state["capability_graph"] = normalize_graph(state.get("capability_graph"))
+        state["flag_objectives"] = normalize_flags(state.get("flag_objectives"))
+        state.setdefault("attacker_state", {}).setdefault("estimated_capabilities", [])
+        return state
 
     def save(self, state):
         state["updated_at"] = now_iso()

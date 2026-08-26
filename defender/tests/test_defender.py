@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from collectors import EvidenceCollector, aggregate, ignored_source
+from capability_graph import apply_flag_evidence, apply_observation, apply_system_evidence, default_flag_objectives, default_graph, derived_depths
 from config import Config
 from kimi import validate_result
 from policy import block_ip, validate_scenario
@@ -21,6 +22,40 @@ def test_config(directory):
 
 
 class DefenderTests(unittest.TestCase):
+    def test_capability_graph_has_all_depths_and_independent_confirmation(self):
+        graph = default_graph()
+        self.assertEqual([node["depth"] for node in graph["nodes"]], list(range(1, 11)))
+        graph = apply_observation(graph, "challenge_database_access", "EV-10", "2026-01-01T00:00:00Z")
+        self.assertEqual(derived_depths(graph)["confirmed_depth"], 10)
+        self.assertEqual(next(node for node in graph["nodes"] if node["depth"] == 1)["status"], "not_observed")
+
+    def test_evidence_and_kimi_proposal_are_safe_and_deduplicated(self):
+        graph = apply_system_evidence(default_graph(), {"evidence_id": "EV-1", "timestamp": "2026-01-01T00:00:00Z", "source": "nginx_access_log", "confidence": 0.7, "metadata": {}})
+        graph = apply_system_evidence(graph, {"evidence_id": "EV-1", "timestamp": "2026-01-01T00:00:00Z", "source": "nginx_access_log", "confidence": 0.7, "metadata": {}})
+        node = next(item for item in graph["nodes"] if item["id"] == "public_endpoint_reached")
+        self.assertEqual(node["status"], "confirmed")
+        self.assertEqual(node["evidence_ids"], ["EV-1"])
+        defender = Defender(test_config(tempfile.mkdtemp()))
+        defender.apply_analysis({"analysis": {"summary": "ok", "threat_level": "LOW", "confidence": 1}, "incident_updates": [], "capability_updates": [{"node_id": "unknown", "evidence_ids": ["EV-1"], "confidence": 1}], "exposure_updates": [], "defense_scenarios": [], "watch_conditions": [], "unresolved_hypotheses": [], "mitre_attack_context": []}, [{"evidence_id": "EV-1", "timestamp": "2026-01-01T00:00:00Z"}])
+        self.assertEqual(derived_depths(defender.state["capability_graph"])["confirmed_depth"], 0)
+
+    def test_flags_keep_acquisition_and_submission_separate(self):
+        flags = apply_flag_evidence(default_flag_objectives(), {"evidence_id": "EV-F", "timestamp": "2026-01-01T00:00:00Z", "metadata": {"flag_id": "flag_1", "flag_submission_status": "accepted"}})
+        flag = flags["flags"][0]
+        self.assertEqual(flag["acquisition_status"], "confirmed")
+        self.assertEqual(flag["submission_status"], "accepted")
+
+    def test_legacy_state_migrates_to_graph_and_malformed_graph_falls_back(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = test_config(directory)
+            store = StateStore(directory, config)
+            legacy = {"schema_version": "1.0", "attacker_state": {"estimated_capabilities": [{"capability": "legacy"}]}}
+            with open(store.state_path, "w", encoding="utf-8") as handle:
+                json.dump(legacy, handle)
+            restored = store.load()
+            self.assertEqual(restored["schema_version"], "2.0")
+            self.assertEqual(len(restored["capability_graph"]["nodes"]), 10)
+            self.assertEqual(restored["attacker_state"]["estimated_capabilities"][0]["capability"], "legacy")
     def test_ignore_cidr_and_aggregation(self):
         config = SimpleNamespace(ignore_networks=Config.from_env().ignore_networks)
         self.assertTrue(ignored_source("10.8.8.42", config.ignore_networks))

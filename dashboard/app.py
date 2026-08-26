@@ -24,6 +24,15 @@ SUSPICIOUS_REQUEST = re.compile(
 )
 
 
+def _fallback_graph():
+    labels = ("Public Endpoint Reached", "Service / Protocol Discovered", "Exploit Attempt Observed", "Exploit Success Confirmed", "Application Data Access", "Credential Acquired", "Challenge Session Established", "Command Execution / Filesystem Read", "Internal Service Reached", "Challenge Database Access")
+    return {"nodes": [{"id": "depth_%s" % depth, "label": label, "depth": depth, "status": "not_observed", "confidence": 0.0, "evidence_ids": [], "last_observed_at": None} for depth, label in enumerate(labels, 1)]}
+
+
+def _fallback_flags():
+    return {"flags": [{"id": "flag_%s" % number, "label": "Flag %s" % number, "acquisition_status": "not_observed", "submission_status": "not_submitted", "evidence_ids": [], "updated_at": None, "provenance": "defender_estimate"} for number in (1, 2, 3)]}
+
+
 def activity_snapshot():
     """Return the latest Nginx observations without modifying its logs."""
     try:
@@ -114,12 +123,14 @@ def defender_snapshot():
     unavailable = {
         "available": False, "threat_level": "UNKNOWN", "phase": "--", "updated_at": None,
         "metrics": {}, "incidents": [], "blocked_sources": [], "capabilities": [],
-        "exposure_count": 0, "recent_events": [],
+        "exposure_count": 0, "recent_events": [], "capability_graph": _fallback_graph(),
+        "depth_summary": {"confirmed_depth": 0, "possible_depth": 0, "confirmed_count": 0, "suspected_count": 0},
+        "flag_objectives": _fallback_flags(),
     }
     try:
         with open(DEFENDER_STATE_PATH, encoding="utf-8") as state_file:
             state = json.load(state_file)
-        if state.get("schema_version") != "1.0":
+        if state.get("schema_version") not in {"1.0", "2.0"}:
             return unavailable
     except (OSError, ValueError, json.JSONDecodeError):
         return unavailable
@@ -136,6 +147,11 @@ def defender_snapshot():
     exposure_count = sum(len(exposure.get(key, [])) for key in
                          ("endpoints", "parameters", "vulnerabilities", "exposed_assets", "attack_paths"))
     defense = state.get("defense", {})
+    graph = state.get("capability_graph") if isinstance(state.get("capability_graph"), dict) else _fallback_graph()
+    nodes = [node for node in graph.get("nodes", []) if isinstance(node, dict)][:20]
+    confirmed = [node.get("depth", 0) for node in nodes if node.get("status") == "confirmed"]
+    possible = [node.get("depth", 0) for node in nodes if node.get("status") in {"suspected", "confirmed"}]
+    flags = state.get("flag_objectives") if isinstance(state.get("flag_objectives"), dict) else _fallback_flags()
     return {
         "available": True,
         "threat_level": state.get("threat_level", "UNKNOWN"),
@@ -147,6 +163,10 @@ def defender_snapshot():
         "capabilities": state.get("attacker_state", {}).get("estimated_capabilities", [])[:6],
         "exposure_count": exposure_count,
         "recent_events": recent_events,
+        "capability_graph": {"nodes": nodes},
+        "depth_summary": {"confirmed_depth": max(confirmed, default=0), "possible_depth": max(possible, default=0),
+                          "confirmed_count": len(confirmed), "suspected_count": sum(node.get("status") == "suspected" for node in nodes)},
+        "flag_objectives": {"flags": [item for item in flags.get("flags", []) if isinstance(item, dict)][:3]},
     }
 
 

@@ -4,6 +4,7 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from collectors import EvidenceCollector, aggregate
+from capability_graph import apply_flag_evidence, apply_observation, apply_system_evidence
 from config import Config
 from kimi import KimiClient
 from policy import active_block, block_ip, validate_scenario
@@ -45,7 +46,7 @@ class Defender:
         else:
             collection.append(item)
 
-    def apply_analysis(self, result):
+    def apply_analysis(self, result, evidence=()):
         self.state["threat_level"] = result["analysis"]["threat_level"]
         for incident in result["incident_updates"]:
             self._upsert(self.state["active_incidents"], incident, "incident_id")
@@ -54,6 +55,15 @@ class Defender:
         for capability in result["capability_updates"]:
             self._upsert(self.state["attacker_state"]["estimated_capabilities"], capability, "capability")
             self.store.event("CAPABILITY", self.state["cycle"], capability.get("capability", "unknown"), capability, capability.get("related_incident_id"))
+            node_id = capability.get("node_id") or capability.get("capability")
+            evidence_ids = capability.get("evidence_ids")
+            known_ids = {item.get("evidence_id") for item in evidence}
+            if isinstance(evidence_ids, list) and node_id and all(item in known_ids for item in evidence_ids):
+                for evidence_id in dict.fromkeys(evidence_ids):
+                    item = next((candidate for candidate in evidence if candidate.get("evidence_id") == evidence_id), None)
+                    self.state["capability_graph"] = apply_observation(self.state["capability_graph"], node_id, evidence_id,
+                                                                          item.get("timestamp") if item else now_iso(), "suspected",
+                                                                          capability.get("confidence", 0.0))
         for update in result["exposure_updates"]:
             category = update.get("category")
             if category in self.state["exposure"]:
@@ -99,7 +109,11 @@ class Defender:
 
     def tick(self):
         with self.lock:
-            self.buffer.extend(self.collector.collect(self.state))
+            collected = self.collector.collect(self.state)
+            for item in collected:
+                self.state["capability_graph"] = apply_system_evidence(self.state["capability_graph"], item)
+                self.state["flag_objectives"] = apply_flag_evidence(self.state["flag_objectives"], item)
+            self.buffer.extend(collected)
             active_block(self.state, "0.0.0.0")
             if self.buffer and time.monotonic() - self.last_reasoning >= self.config.reasoning_interval_sec:
                 batch = aggregate(self.buffer)
@@ -110,7 +124,7 @@ class Defender:
                 self.store.event("REASONING_START", cycle, "evidence batch reasoning", {"evidence": len(batch)})
                 try:
                     result = self.kimi.analyze(self.context(batch))
-                    self.apply_analysis(result)
+                    self.apply_analysis(result, batch)
                     self.execute_scenarios(result["defense_scenarios"])
                     self.store.event("REASONING_END", cycle, result["analysis"]["summary"], result["analysis"])
                     print("K3DF SUMMARY cycle=%s threat=%s" % (cycle, self.state["threat_level"]), flush=True)
