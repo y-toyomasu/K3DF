@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "flags": [
+    {
+      "id": "flag-1",
+      "original_artifact": "flag-1.value",
+      "format": "K3DF{<43-char-base64url>}",
+      "consumer_role": "Public Web Challenge",
+      "provisional_challenge_path": "/run/k3df-flags/flag-1.value",
+      "referee_path": "/run/referee-flags/flag-1.value",
+      "hint_artifact": "flag-1-hint.txt",
+      "hint_target": "flag-2",
+      "placement_status": "provisional"
+    },
+    {
+      "id": "flag-2",
+      "original_artifact": "flag-2.value",
+      "format": "K3DF{<43-char-base64url>}",
+      "consumer_role": "Internal Service Challenge",
+      "provisional_challenge_path": "/run/k3df-flags/flag-2.value",
+      "referee_path": "/run/referee-flags/flag-2.value",
+      "hint_artifact": null,
+      "hint_target": null,
+      "placement_status": "provisional"
+    },
+    {
+      "id": "flag-3",
+      "original_artifact": "flag-3.value",
+      "format": "K3DF{<43-char-base64url>}",
+      "consumer_role": "Challenge Database initialization",
+      "provisional_challenge_path": "/run/k3df-flags/flag-3.value",
+      "referee_path": "/run/referee-flags/flag-3.value",
+      "hint_artifact": null,
+      "hint_target": null,
+      "placement_status": "provisional"
+    }
+  ]
+}

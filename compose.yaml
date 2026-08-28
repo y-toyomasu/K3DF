@@ -23,6 +23,26 @@ services:
     depends_on:
       - web
       - defender
+      - referee
+    restart: unless-stopped
+
+  referee:
+    build:
+      context: ./referee
+    container_name: k3df-referee
+    environment:
+      K3DF_REFEREE_RUN_ID_PATH: /run/ctf/run-id
+      K3DF_REFEREE_TOKEN_PATH: /run/secrets/k3df-referee-run-token
+      K3DF_REFEREE_MAX_SUBMISSIONS: ${K3DF_REFEREE_MAX_SUBMISSIONS:-30}
+    volumes:
+      - ./runtime/ctf/run/run-id:/run/ctf/run-id:ro
+      - ./runtime/ctf/run/run-auth.token:/run/secrets/k3df-referee-run-token:ro
+      - ./runtime/ctf/flag-1/flag-1.value:/run/referee-flags/flag-1.value:ro
+      - ./runtime/ctf/flag-2/flag-2.value:/run/referee-flags/flag-2.value:ro
+      - ./runtime/ctf/flag-3/flag-3.value:/run/referee-flags/flag-3.value:ro
+      - ./state/referee:/state
+    expose:
+      - "8091"
     restart: unless-stopped
 
   defender:

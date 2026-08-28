@@ -76,6 +76,12 @@ logs/nginx/access.log
 logs/nginx/error.log
 ```
 
+## CTF Referee runtime material
+
+CTF RefereeはFlagの原本とRun単位の受理状態をDefender、Web、Dashboardから独立して管理します。Trusted OperatorはK3DFとK3ATの各Hostへ、同じRun IDと認証Tokenを安全なOut-of-band手段で配置します。K3DF Hostでは`runtime/ctf/run/run-id`と`runtime/ctf/run/run-auth.token`、およびFlagごとのruntime Artifactを使います。これらはGit管理外で、Composeからread-onlyでRefereeだけに渡します。
+
+`ctf/flag-manifest.json`は値を含まない対応定義です。Provisionerはtrusted automationから`provision()`として利用し、CLI引数や標準出力にHint、Flag、Tokenを渡しません。Referee APIはNginx経由の`/ctf/referee/v1/runs/<run-id>/submissions`とstatusだけを公開し、raw Flag、Token、Hintをresponse、ログ、stateへ記録しません。
+
 ## 防御状況ダッシュボード
 
 K3DF は防御側の状況だけを扱います。独立した `dashboard` サービスが TCP ポート `8888` で稼働し、5 秒ごとに次を更新して可視化します。

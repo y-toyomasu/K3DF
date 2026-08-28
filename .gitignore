@@ -1,4 +1,5 @@
 .env
+runtime/ctf/
 __pycache__/
 *.py[cod]
 state/defender_state.json
