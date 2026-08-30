@@ -19,9 +19,18 @@ def load_service(root: Path, seed: str | None = "DemoSeed"):
     flags.mkdir()
     values = [f"K3DF{{{character * 43}}}" for character in ("a", "b", "c")]
     for number, value in enumerate(values, start=1):
-        (flags / f"flag-{number}.value").write_text(value, encoding="ascii")
+        flag_directory = flags / f"flag-{number}"
+        flag_directory.mkdir()
+        flag_path = flag_directory / "flag.value"
+        flag_path.write_text(value, encoding="ascii")
+        os.chown(flag_path, 0, 20001)
+        os.chmod(flag_path, 0o440)
+    state_directory = root / "state"
+    state_directory.mkdir()
+    os.chown(state_directory, 10001, 10001)
+    os.chmod(state_directory, 0o700)
     os.environ["K3DF_REFEREE_FLAGS_PATH"] = str(flags)
-    os.environ["K3DF_REFEREE_STATE_PATH"] = str(root / "referee.json")
+    os.environ["K3DF_REFEREE_STATE_PATH"] = str(state_directory / "referee.json")
     os.environ["K3DF_REFEREE_MAX_SUBMISSIONS"] = "30"
     if seed is None:
         os.environ.pop("K3DF_CTF_DEMO_SEED", None)
@@ -110,3 +119,13 @@ class RefereeTests(unittest.TestCase):
         self.referee.max_submissions = 1
         self.assertEqual(self.submit("not-a-flag")[1]["outcome"], "rejected")
         self.assertEqual(self.submit(self.flags[0])[1]["outcome"], "budget_exhausted")
+
+    def test_invalid_flag_permissions_and_state_directory_fail_closed(self):
+        flag_path = self.root / "flags" / "flag-1" / "flag.value"
+        os.chmod(flag_path, 0o640)
+        with self.assertRaisesRegex(RuntimeError, "Invalid flag file"):
+            self.module.Referee()
+        os.chmod(flag_path, 0o440)
+        os.chmod(self.root / "state", 0o755)
+        with self.assertRaisesRegex(RuntimeError, "Invalid referee state"):
+            self.module.Referee()

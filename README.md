@@ -76,11 +76,13 @@ logs/nginx/access.log
 logs/nginx/error.log
 ```
 
-## CTF Referee runtime material
+## CTF Referee volumes
 
-CTF RefereeはFlagの原本とRun単位の受理状態をDefender、Web、Dashboardから独立して管理します。Trusted OperatorはK3DFとK3ATの各Hostへ、同じRun IDと認証Tokenを安全なOut-of-band手段で配置します。K3DF Hostでは`runtime/ctf/run/run-id`と`runtime/ctf/run/run-auth.token`、およびFlagごとのruntime Artifactを使います。これらはGit管理外で、Composeからread-onlyでRefereeだけに渡します。
+CTF RefereeはFlag原本と受理状態をDefender、Web、Dashboardから分離します。Flagは`k3df-ctf-flag-1`〜`k3df-ctf-flag-3`、受理状態は`k3df-referee-state`のexternal named volumeで管理します。これらのVolumeはInfrastructureの明示的なLifecycle操作が生成・検証し、K3DF Composeは不足Volumeを暗黙作成しません。通常のContainer再起動でFlagを生成・変更せず、`docker compose down -v`は使いません。
 
-`ctf/flag-manifest.json`は値を含まない対応定義です。Provisionerはtrusted automationから`provision()`として利用し、CLI引数や標準出力にHint、Flag、Tokenを渡しません。Referee APIはNginx経由の`/ctf/referee/v1/runs/<run-id>/submissions`とstatusだけを公開し、raw Flag、Token、Hintをresponse、ログ、stateへ記録しません。
+Refereeは3個のFlag Volumeをread-only、state Volumeだけをread-writeで使用します。各Flagは`root:20001`、Mode `0440`の通常File、state Directoryは`10001:10001`、Mode `0700`でなければ、値を表示せず起動に失敗します。Refereeは固定UID/GID `10001:10001`とFlag reader補助Group `20001`で動作し、Hint、Docker socket、Host bind mountを受け取りません。将来のChallenge Consumerは担当する1個のFlag Volumeだけをread-onlyで使用します。
+
+`ctf/flag-manifest.json`は値を含まないVolume対応定義です。`K3DF_CTF_DEMO_SEED`はK3ATと同じ値を使うDemo接続確認値で、既定値は`ValidationSeed`です。SeedはSecretやSecurity境界ではなく、`.env`実体、Flag、HintをGitへCommitしません。Referee APIはprivate Network上のNginx経由で`/ctf/referee/v1/submissions`と`/ctf/referee/v1/status`だけを公開し、raw Flag、Seed、Hintをresponse、ログ、stateへ記録しません。
 
 ## 防御状況ダッシュボード
 

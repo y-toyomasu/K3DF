@@ -34,13 +34,13 @@ services:
       K3DF_CTF_DEMO_SEED: ${K3DF_CTF_DEMO_SEED:-ValidationSeed}
       K3DF_REFEREE_MAX_SUBMISSIONS: ${K3DF_REFEREE_MAX_SUBMISSIONS:-30}
     volumes:
-      - ./runtime/ctf/flag-1/flag-1.value:/run/referee-flags/flag-1.value:ro
-      - ./runtime/ctf/flag-2/flag-2.value:/run/referee-flags/flag-2.value:ro
-      - ./runtime/ctf/flag-3/flag-3.value:/run/referee-flags/flag-3.value:ro
-      - ./state/referee:/state
+      - k3df-ctf-flag-1:/run/referee-flags/flag-1:ro
+      - k3df-ctf-flag-2:/run/referee-flags/flag-2:ro
+      - k3df-ctf-flag-3:/run/referee-flags/flag-3:ro
+      - k3df-referee-state:/state
     expose:
       - "8091"
-    restart: unless-stopped
+    restart: "no"
 
   defender:
     build:
@@ -79,4 +79,18 @@ services:
       - web
       - nginx
     restart: unless-stopped
+
+volumes:
+  k3df-ctf-flag-1:
+    name: k3df-ctf-flag-1
+    external: true
+  k3df-ctf-flag-2:
+    name: k3df-ctf-flag-2
+    external: true
+  k3df-ctf-flag-3:
+    name: k3df-ctf-flag-3
+    external: true
+  k3df-referee-state:
+    name: k3df-referee-state
+    external: true
 

@@ -15,17 +15,39 @@ from pathlib import Path
 FLAG_RE = re.compile(r"^K3DF\{[A-Za-z0-9_-]{43}\}$")
 MAX_BODY = 4096
 DEFAULT_SEED = "ValidationSeed"
+REFEREE_UID = 10001
+REFEREE_GID = 10001
+FLAG_READER_GID = 20001
 
 
 def read_flag(path: str) -> str:
     candidate = Path(path)
-    metadata = candidate.stat()
-    if not stat.S_ISREG(metadata.st_mode) or metadata.st_size <= 0 or metadata.st_size > 512:
+    metadata = candidate.lstat()
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_size <= 0
+        or metadata.st_size > 512
+        or metadata.st_uid != 0
+        or metadata.st_gid != FLAG_READER_GID
+        or stat.S_IMODE(metadata.st_mode) != 0o440
+        or metadata.st_mode & 0o222
+    ):
         raise RuntimeError("Invalid flag file.")
     value = candidate.read_text(encoding="ascii").strip()
     if not FLAG_RE.fullmatch(value):
         raise RuntimeError("Invalid flag file.")
     return value
+
+
+def validate_state_directory(path: Path) -> None:
+    metadata = path.lstat()
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != REFEREE_UID
+        or metadata.st_gid != REFEREE_GID
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise RuntimeError("Invalid referee state.")
 
 
 def valid_seed(value: str) -> bool:
@@ -38,10 +60,11 @@ class Referee:
         if not valid_seed(self.seed):
             raise RuntimeError("Invalid demo seed.")
         flag_root = os.environ.get("K3DF_REFEREE_FLAGS_PATH", "/run/referee-flags")
-        self.flags = {f"flag-{number}": read_flag(f"{flag_root}/flag-{number}.value") for number in range(1, 4)}
+        self.flags = {f"flag-{number}": read_flag(f"{flag_root}/flag-{number}/flag.value") for number in range(1, 4)}
         if len(set(self.flags.values())) != 3:
             raise RuntimeError("Duplicate flag values.")
         self.state_path = Path(os.environ.get("K3DF_REFEREE_STATE_PATH", "/state/referee.json"))
+        validate_state_directory(self.state_path.parent)
         try:
             self.max_submissions = int(os.environ.get("K3DF_REFEREE_MAX_SUBMISSIONS", "30"))
         except ValueError as exc:
