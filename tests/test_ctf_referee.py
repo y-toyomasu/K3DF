@@ -2,6 +2,7 @@ import http.client
 import importlib.util
 import json
 import os
+import stat
 import sys
 import tempfile
 import threading
@@ -9,6 +10,8 @@ import unittest
 import uuid
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 
 SERVICE = Path(__file__).resolve().parents[1] / "referee" / "service.py"
@@ -23,12 +26,8 @@ def load_service(root: Path, seed: str | None = "DemoSeed"):
         flag_directory.mkdir()
         flag_path = flag_directory / "flag.value"
         flag_path.write_text(value, encoding="ascii")
-        os.chown(flag_path, 0, 20001)
-        os.chmod(flag_path, 0o440)
     state_directory = root / "state"
     state_directory.mkdir()
-    os.chown(state_directory, 10001, 10001)
-    os.chmod(state_directory, 0o700)
     os.environ["K3DF_REFEREE_FLAGS_PATH"] = str(flags)
     os.environ["K3DF_REFEREE_STATE_PATH"] = str(state_directory / "referee.json")
     os.environ["K3DF_REFEREE_MAX_SUBMISSIONS"] = "30"
@@ -50,6 +49,25 @@ class RefereeTests(unittest.TestCase):
         self.temporary_directory = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary_directory.name)
         self.module, self.flags = load_service(self.root)
+        self.flag_metadata = {}
+        self.state_metadata = (10001, 10001, 0o700)
+        self.path_types = {}
+        original_lstat = Path.lstat
+
+        def synthetic_lstat(path):
+            metadata = original_lstat(path)
+            resolved = Path(path)
+            kind = self.path_types.get(resolved, stat.S_IFMT(metadata.st_mode))
+            if resolved.name == "flag.value":
+                uid, gid, mode = self.flag_metadata.get(resolved, (0, 20001, 0o440))
+                return SimpleNamespace(st_mode=kind | mode, st_size=metadata.st_size, st_uid=uid, st_gid=gid)
+            if resolved == self.root / "state":
+                uid, gid, mode = self.state_metadata
+                return SimpleNamespace(st_mode=kind | mode, st_size=metadata.st_size, st_uid=uid, st_gid=gid)
+            return metadata
+
+        self.lstat_patch = mock.patch.object(self.module.Path, "lstat", synthetic_lstat)
+        self.lstat_patch.start()
         self.referee = self.module.Referee()
         self.module.REFEREE = self.referee
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), self.module.Handler)
@@ -60,6 +78,7 @@ class RefereeTests(unittest.TestCase):
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=2)
+        self.lstat_patch.stop()
         self.temporary_directory.cleanup()
 
     def request(self, method, path, *, headers=None, body=None):
@@ -79,11 +98,11 @@ class RefereeTests(unittest.TestCase):
         return self.request("POST", "/ctf/referee/v1/submissions", headers=headers, body=json.dumps({"candidate": candidate}))
 
     def test_default_seed_and_legacy_run_configuration_are_not_used(self):
-        with tempfile.TemporaryDirectory() as alternate_root:
-            module, _ = load_service(Path(alternate_root), seed=None)
-            self.assertEqual(module.Referee().seed, "ValidationSeed")
-            self.assertNotIn("K3DF_REFEREE_RUN_ID_PATH", SERVICE.read_text(encoding="utf-8"))
-            self.assertNotIn("K3DF_REFEREE_TOKEN_PATH", SERVICE.read_text(encoding="utf-8"))
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("K3DF_CTF_DEMO_SEED", None)
+            self.assertEqual(self.module.Referee().seed, "ValidationSeed")
+        self.assertNotIn("K3DF_REFEREE_RUN_ID_PATH", SERVICE.read_text(encoding="utf-8"))
+        self.assertNotIn("K3DF_REFEREE_TOKEN_PATH", SERVICE.read_text(encoding="utf-8"))
 
     def test_health_is_public_and_fixed_status_api_requires_seed(self):
         self.assertEqual(self.request("GET", "/health"), (200, {"status": "ok"}))
@@ -122,10 +141,60 @@ class RefereeTests(unittest.TestCase):
 
     def test_invalid_flag_permissions_and_state_directory_fail_closed(self):
         flag_path = self.root / "flags" / "flag-1" / "flag.value"
-        os.chmod(flag_path, 0o640)
+        self.flag_metadata[flag_path] = (0, 20001, 0o640)
         with self.assertRaisesRegex(RuntimeError, "Invalid flag file"):
             self.module.Referee()
-        os.chmod(flag_path, 0o440)
-        os.chmod(self.root / "state", 0o755)
+        self.flag_metadata[flag_path] = (0, 20001, 0o440)
+        self.state_metadata = (10001, 10001, 0o755)
         with self.assertRaisesRegex(RuntimeError, "Invalid referee state"):
             self.module.Referee()
+
+    def assert_safe_flag_failure(self):
+        with self.assertRaises(RuntimeError) as context:
+            self.module.Referee()
+        self.assertEqual(str(context.exception), "Invalid flag file.")
+        self.assertNotIn(str(self.root), str(context.exception))
+        self.assertNotIn(self.flags[0], str(context.exception))
+
+    def test_missing_directory_symlink_owner_mode_format_and_non_ascii_flags_are_redacted(self):
+        flag_path = self.root / "flags" / "flag-1" / "flag.value"
+        flag_path.unlink()
+        self.assert_safe_flag_failure()
+
+        flag_path.write_text(self.flags[0], encoding="ascii")
+        flag_path.unlink()
+        flag_path.mkdir()
+        self.assert_safe_flag_failure()
+
+    def test_symlink_owner_mode_format_and_non_ascii_flags_are_redacted(self):
+        flag_path = self.root / "flags" / "flag-1" / "flag.value"
+        flag_path.unlink()
+        self.path_types[flag_path] = stat.S_IFLNK
+        self.assert_safe_flag_failure()
+        self.path_types.pop(flag_path)
+
+        self.flag_metadata[flag_path] = (0, 0, 0o440)
+        self.assert_safe_flag_failure()
+        self.flag_metadata[flag_path] = (0, 20001, 0o640)
+        self.assert_safe_flag_failure()
+        self.flag_metadata[flag_path] = (0, 20001, 0o440)
+        flag_path.write_text("K3DF{invalid}", encoding="ascii")
+        self.assert_safe_flag_failure()
+        flag_path.write_bytes(b"\xff")
+        self.assert_safe_flag_failure()
+
+    def test_duplicate_and_corrupt_state_are_redacted(self):
+        flag_path = self.root / "flags" / "flag-2" / "flag.value"
+        flag_path.write_text(self.flags[0], encoding="ascii")
+        with self.assertRaises(RuntimeError) as duplicate:
+            self.module.Referee()
+        self.assertEqual(str(duplicate.exception), "Duplicate flag values.")
+        self.assertNotIn(self.flags[0], str(duplicate.exception))
+
+        flag_path.write_text(self.flags[1], encoding="ascii")
+        self.referee.state_path.write_text("{not-json", encoding="utf-8")
+        with self.assertRaises(RuntimeError) as state_error:
+            self.module.Referee()
+        self.assertEqual(str(state_error.exception), "Invalid referee state.")
+        self.assertNotIn(str(self.referee.state_path), str(state_error.exception))
+        self.assertNotIn("{not-json", str(state_error.exception))

@@ -6,6 +6,7 @@ import json
 import os
 import re
 import stat
+import sys
 import tempfile
 import threading
 from datetime import datetime, timezone
@@ -21,33 +22,39 @@ FLAG_READER_GID = 20001
 
 
 def read_flag(path: str) -> str:
-    candidate = Path(path)
-    metadata = candidate.lstat()
-    if (
-        not stat.S_ISREG(metadata.st_mode)
-        or metadata.st_size <= 0
-        or metadata.st_size > 512
-        or metadata.st_uid != 0
-        or metadata.st_gid != FLAG_READER_GID
-        or stat.S_IMODE(metadata.st_mode) != 0o440
-        or metadata.st_mode & 0o222
-    ):
-        raise RuntimeError("Invalid flag file.")
-    value = candidate.read_text(encoding="ascii").strip()
-    if not FLAG_RE.fullmatch(value):
-        raise RuntimeError("Invalid flag file.")
-    return value
+    try:
+        candidate = Path(path)
+        metadata = candidate.lstat()
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_size <= 0
+            or metadata.st_size > 512
+            or metadata.st_uid != 0
+            or metadata.st_gid != FLAG_READER_GID
+            or stat.S_IMODE(metadata.st_mode) != 0o440
+            or metadata.st_mode & 0o222
+        ):
+            raise ValueError
+        value = candidate.read_text(encoding="ascii").strip()
+        if not FLAG_RE.fullmatch(value):
+            raise ValueError
+        return value
+    except (OSError, UnicodeError, ValueError):
+        raise RuntimeError("Invalid flag file.") from None
 
 
 def validate_state_directory(path: Path) -> None:
-    metadata = path.lstat()
-    if (
-        not stat.S_ISDIR(metadata.st_mode)
-        or metadata.st_uid != REFEREE_UID
-        or metadata.st_gid != REFEREE_GID
-        or stat.S_IMODE(metadata.st_mode) != 0o700
-    ):
-        raise RuntimeError("Invalid referee state.")
+    try:
+        metadata = path.lstat()
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_uid != REFEREE_UID
+            or metadata.st_gid != REFEREE_GID
+            or stat.S_IMODE(metadata.st_mode) != 0o700
+        ):
+            raise ValueError
+    except (OSError, ValueError):
+        raise RuntimeError("Invalid referee state.") from None
 
 
 def valid_seed(value: str) -> bool:
@@ -67,8 +74,8 @@ class Referee:
         validate_state_directory(self.state_path.parent)
         try:
             self.max_submissions = int(os.environ.get("K3DF_REFEREE_MAX_SUBMISSIONS", "30"))
-        except ValueError as exc:
-            raise RuntimeError("Invalid referee budget.") from exc
+        except ValueError:
+            raise RuntimeError("Invalid referee budget.") from None
         if self.max_submissions <= 0:
             raise RuntimeError("Invalid referee budget.")
         self.lock = threading.Lock()
@@ -77,12 +84,15 @@ class Referee:
     def _load(self):
         if not self.state_path.exists():
             return set(), 0
-        data = json.loads(self.state_path.read_text(encoding="utf-8"))
-        accepted = data.get("accepted", [])
-        attempts = data.get("submission_attempts", 0)
-        if not isinstance(accepted, list) or not all(item in self.flags for item in accepted) or not isinstance(attempts, int) or attempts < 0:
-            raise RuntimeError("Invalid referee state.")
-        return set(accepted), attempts
+        try:
+            data = json.loads(self.state_path.read_text(encoding="utf-8"))
+            accepted = data.get("accepted", [])
+            attempts = data.get("submission_attempts", 0)
+            if not isinstance(accepted, list) or not all(item in self.flags for item in accepted) or not isinstance(attempts, int) or attempts < 0:
+                raise ValueError
+            return set(accepted), attempts
+        except (OSError, UnicodeError, json.JSONDecodeError, ValueError, AttributeError):
+            raise RuntimeError("Invalid referee state.") from None
 
     def _save(self):
         data = {"schema_version": "1.0", "accepted": sorted(self.accepted), "accepted_count": len(self.accepted), "total": 3, "won": len(self.accepted) == 3, "submission_attempts": self.submission_attempts, "max_submissions": self.max_submissions, "updated_at": datetime.now(timezone.utc).isoformat()}
@@ -112,7 +122,7 @@ class Referee:
             return {"outcome": "rejected"}
 
 
-REFEREE = Referee()
+REFEREE: Referee | None = None
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -165,4 +175,9 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    try:
+        REFEREE = Referee()
+    except RuntimeError:
+        print("Referee initialization failed.", file=sys.stderr)
+        raise SystemExit(1)
     ThreadingHTTPServer(("0.0.0.0", 8091), Handler).serve_forever()
