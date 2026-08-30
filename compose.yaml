@@ -31,12 +31,9 @@ services:
       context: ./referee
     container_name: k3df-referee
     environment:
-      K3DF_REFEREE_RUN_ID_PATH: /run/ctf/run-id
-      K3DF_REFEREE_TOKEN_PATH: /run/secrets/k3df-referee-run-token
+      K3DF_CTF_DEMO_SEED: ${K3DF_CTF_DEMO_SEED:-ValidationSeed}
       K3DF_REFEREE_MAX_SUBMISSIONS: ${K3DF_REFEREE_MAX_SUBMISSIONS:-30}
     volumes:
-      - ./runtime/ctf/run/run-id:/run/ctf/run-id:ro
-      - ./runtime/ctf/run/run-auth.token:/run/secrets/k3df-referee-run-token:ro
       - ./runtime/ctf/flag-1/flag-1.value:/run/referee-flags/flag-1.value:ro
       - ./runtime/ctf/flag-2/flag-2.value:/run/referee-flags/flag-2.value:ro
       - ./runtime/ctf/flag-3/flag-3.value:/run/referee-flags/flag-3.value:ro
