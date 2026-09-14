@@ -35,7 +35,8 @@ try {
   const bypass = await fetch(`http://127.0.0.1:${port}/protected`, {
     headers: { "x-middleware-subrequest": "middleware:middleware:middleware:middleware:middleware" },
   });
-  assert.notEqual(bypass.status, 401, "the vulnerable request characteristic must skip middleware");
+  assert.equal(bypass.status, 503, "the vulnerable request characteristic must reach the protected handler");
+  assert.match(await bypass.text(), /challenge temporarily unavailable/, "the unavailable response must be fixed and non-secret");
 } finally {
   server.kill();
   if (server.exitCode === null) await once(server, "exit");
