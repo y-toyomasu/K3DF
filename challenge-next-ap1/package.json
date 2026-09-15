@@ -5,7 +5,8 @@
   "scripts": {
     "build": "next build",
     "start": "next start",
-    "test:black-box": "node tests/black-box.mjs"
+    "test:black-box": "node tests/black-box.mjs",
+    "test:ingress": "node tests/ingress-black-box.mjs"
   },
   "dependencies": {
     "next": "13.5.6",

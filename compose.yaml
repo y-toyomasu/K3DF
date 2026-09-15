@@ -24,6 +24,21 @@ services:
       - web
       - defender
       - referee
+      - challenge-next-ap1
+    restart: unless-stopped
+
+  challenge-next-ap1:
+    build:
+      context: ./challenge-next-ap1
+    container_name: k3df-challenge-next-ap1
+    expose:
+      - "3000"
+    volumes:
+      - k3df-ctf-flag-1:/run/k3df-flags/flag-1:ro
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     restart: unless-stopped
 
   referee:
