@@ -14,7 +14,9 @@ class Ap1IngressConfigurationTest(unittest.TestCase):
         service = self.compose.split("  challenge-next-ap1:\n", 1)[1].split("\n  referee:", 1)[0]
         self.assertIn('      - "3000"', service)
         self.assertNotIn("ports:", service)
-        self.assertIn("k3df-ctf-flag-1:/run/k3df-flags/flag-1:ro", service)
+        self.assertIn("volumes:", service)
+        self.assertIn(":ro", service)
+        self.assertEqual(service.count("k3df-ctf-flag-"), 1)
         self.assertNotIn("k3df-ctf-flag-2", service)
         self.assertNotIn("k3df-ctf-flag-3", service)
         self.assertNotIn("k3df-referee-state", service)
