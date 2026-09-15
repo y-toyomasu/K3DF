@@ -21,4 +21,4 @@ const bypass = await fetch(`${baseUrl}/ap1/protected`, {
 });
 assert.equal(bypass.status, 200, "the AP-01 bypass request must reach the consumer");
 const response = await bypass.text();
-assert.match(response, /K3DF\{[A-Za-z0-9_-]{43}\}/, "the consumer response must remain in memory");
+assert.ok(/K3DF\{[A-Za-z0-9_-]{43}\}/.test(response), "the consumer response must remain in memory");
