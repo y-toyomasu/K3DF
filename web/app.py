@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, Response, request
 import sqlite3
 import os
 
@@ -83,6 +83,18 @@ def health():
     return {"status": "ok"}
 
 
+@app.route("/sitemap.xml")
+def sitemap():
+    return Response(
+        """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">
+  <url><loc>/ap1/</loc></url>
+</urlset>
+""",
+        content_type="application/xml",
+    )
+
+
 @app.route("/customer")
 def customer():
     customer_id = request.args.get("id", "1")
@@ -107,10 +119,10 @@ def customer():
     }
 
 
-init_db()
-
-app.run(
-    host="0.0.0.0",
-    port=8080,
-    debug=os.getenv("environment") == "dev",
-)
+if __name__ == "__main__":
+    init_db()
+    app.run(
+        host="0.0.0.0",
+        port=8080,
+        debug=os.getenv("environment") == "dev",
+    )
