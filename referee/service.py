@@ -201,10 +201,16 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, REFEREE.submit(candidate))
 
 
-if __name__ == "__main__":
+def main() -> int:
+    global REFEREE
     try:
         REFEREE = Referee()
     except InitializationError as error:
         print(error, file=sys.stderr)
-        raise SystemExit(1)
+        return 1
     ThreadingHTTPServer(("0.0.0.0", 8091), Handler).serve_forever()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

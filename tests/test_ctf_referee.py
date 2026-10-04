@@ -1,5 +1,6 @@
 import http.client
 import importlib.util
+import io
 import json
 import os
 import stat
@@ -216,3 +217,11 @@ class RefereeTests(unittest.TestCase):
         self.assertNotIn("\x01", message)
         self.assertNotIn(self.flags[0], message)
         self.assertNotIn(str(self.root), message)
+
+        stderr = io.StringIO()
+        with mock.patch.object(sys, "stderr", stderr):
+            self.assertEqual(self.module.main(), 1)
+        self.assertIn("category=configuration; target=K3DF_CTF_DEMO_SEED; check=format", stderr.getvalue())
+        self.assertNotIn("\x01", stderr.getvalue())
+        self.assertNotIn(self.flags[0], stderr.getvalue())
+        self.assertNotIn(str(self.root), stderr.getvalue())
