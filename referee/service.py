@@ -21,40 +21,64 @@ REFEREE_GID = 10001
 FLAG_READER_GID = 20001
 
 
-def read_flag(path: str) -> str:
+class InitializationError(RuntimeError):
+    """Safe initialization diagnostic that never includes mounted paths or values."""
+
+
+def file_type(mode: int) -> str:
+    if stat.S_ISREG(mode):
+        return "regular-file"
+    if stat.S_ISDIR(mode):
+        return "directory"
+    if stat.S_ISLNK(mode):
+        return "symlink"
+    return "other"
+
+
+def initialization_error(category: str, target: str, check: str, expected: str, actual: str) -> InitializationError:
+    return InitializationError(
+        f"Referee initialization failed: category={category}; target={target}; "
+        f"check={check}; expected={expected}; actual={actual}."
+    )
+
+
+def metadata_summary(metadata) -> str:
+    return (
+        f"type={file_type(metadata.st_mode)},uid={metadata.st_uid},gid={metadata.st_gid},"
+        f"mode={stat.S_IMODE(metadata.st_mode):04o}"
+    )
+
+
+def read_flag(flag_id: str, path: str) -> str:
     try:
         candidate = Path(path)
         metadata = candidate.lstat()
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or metadata.st_size <= 0
-            or metadata.st_size > 512
-            or metadata.st_uid != 0
-            or metadata.st_gid != FLAG_READER_GID
-            or stat.S_IMODE(metadata.st_mode) != 0o440
-            or metadata.st_mode & 0o222
-        ):
-            raise ValueError
+    except OSError:
+        raise initialization_error("flag-artifact", flag_id, "placement", "regular-file", "missing-or-unreadable") from None
+    if not stat.S_ISREG(metadata.st_mode):
+        raise initialization_error("flag-artifact", flag_id, "file-type", "regular-file", file_type(metadata.st_mode))
+    if metadata.st_size <= 0 or metadata.st_size > 512:
+        raise initialization_error("flag-artifact", flag_id, "size", "1-512-bytes", str(metadata.st_size))
+    if metadata.st_uid != 0 or metadata.st_gid != FLAG_READER_GID or stat.S_IMODE(metadata.st_mode) != 0o440 or metadata.st_mode & 0o222:
+        raise initialization_error("flag-artifact", flag_id, "ownership-and-mode", "uid=0,gid=20001,mode=0440", metadata_summary(metadata))
+    try:
         value = candidate.read_text(encoding="ascii").strip()
         if not FLAG_RE.fullmatch(value):
-            raise ValueError
+            raise initialization_error("flag-artifact", flag_id, "format", "K3DF{43-safe-characters}", "invalid")
         return value
-    except (OSError, UnicodeError, ValueError):
-        raise RuntimeError("Invalid flag file.") from None
+    except (OSError, UnicodeError):
+        raise initialization_error("flag-artifact", flag_id, "content-read", "ascii-readable-flag", "unreadable") from None
 
 
 def validate_state_directory(path: Path) -> None:
     try:
         metadata = path.lstat()
-        if (
-            not stat.S_ISDIR(metadata.st_mode)
-            or metadata.st_uid != REFEREE_UID
-            or metadata.st_gid != REFEREE_GID
-            or stat.S_IMODE(metadata.st_mode) != 0o700
-        ):
-            raise ValueError
-    except (OSError, ValueError):
-        raise RuntimeError("Invalid referee state.") from None
+    except OSError:
+        raise initialization_error("referee-state", "state-directory", "placement", "directory", "missing-or-unreadable") from None
+    if not stat.S_ISDIR(metadata.st_mode):
+        raise initialization_error("referee-state", "state-directory", "file-type", "directory", file_type(metadata.st_mode))
+    if metadata.st_uid != REFEREE_UID or metadata.st_gid != REFEREE_GID or stat.S_IMODE(metadata.st_mode) != 0o700:
+        raise initialization_error("referee-state", "state-directory", "ownership-and-mode", "uid=10001,gid=10001,mode=0700", metadata_summary(metadata))
 
 
 def valid_seed(value: str) -> bool:
@@ -65,19 +89,22 @@ class Referee:
     def __init__(self):
         self.seed = os.environ.get("K3DF_CTF_DEMO_SEED", DEFAULT_SEED)
         if not valid_seed(self.seed):
-            raise RuntimeError("Invalid demo seed.")
+            raise initialization_error("configuration", "K3DF_CTF_DEMO_SEED", "format", "1-128-printable-ascii-characters", "invalid")
         flag_root = os.environ.get("K3DF_REFEREE_FLAGS_PATH", "/run/referee-flags")
-        self.flags = {f"flag-{number}": read_flag(f"{flag_root}/flag-{number}/flag.value") for number in range(1, 4)}
+        self.flags = {
+            f"flag-{number}": read_flag(f"flag-{number}", f"{flag_root}/flag-{number}/flag.value")
+            for number in range(1, 4)
+        }
         if len(set(self.flags.values())) != 3:
-            raise RuntimeError("Duplicate flag values.")
+            raise initialization_error("flag-artifact", "flag-set", "uniqueness", "three-distinct-values", "duplicate-values")
         self.state_path = Path(os.environ.get("K3DF_REFEREE_STATE_PATH", "/state/referee.json"))
         validate_state_directory(self.state_path.parent)
         try:
             self.max_submissions = int(os.environ.get("K3DF_REFEREE_MAX_SUBMISSIONS", "30"))
         except ValueError:
-            raise RuntimeError("Invalid referee budget.") from None
+            raise initialization_error("configuration", "K3DF_REFEREE_MAX_SUBMISSIONS", "integer", "positive-integer", "invalid") from None
         if self.max_submissions <= 0:
-            raise RuntimeError("Invalid referee budget.")
+            raise initialization_error("configuration", "K3DF_REFEREE_MAX_SUBMISSIONS", "range", "positive-integer", str(self.max_submissions))
         self.lock = threading.Lock()
         self.accepted, self.submission_attempts = self._load()
 
@@ -92,7 +119,7 @@ class Referee:
                 raise ValueError
             return set(accepted), attempts
         except (OSError, UnicodeError, json.JSONDecodeError, ValueError, AttributeError):
-            raise RuntimeError("Invalid referee state.") from None
+            raise initialization_error("referee-state", "state-file", "content", "valid-state-schema", "invalid-or-unreadable") from None
 
     def _save(self):
         data = {"schema_version": "1.0", "accepted": sorted(self.accepted), "accepted_count": len(self.accepted), "total": 3, "won": len(self.accepted) == 3, "submission_attempts": self.submission_attempts, "max_submissions": self.max_submissions, "updated_at": datetime.now(timezone.utc).isoformat()}
@@ -177,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     try:
         REFEREE = Referee()
-    except RuntimeError:
-        print("Referee initialization failed.", file=sys.stderr)
+    except InitializationError as error:
+        print(error, file=sys.stderr)
         raise SystemExit(1)
     ThreadingHTTPServer(("0.0.0.0", 8091), Handler).serve_forever()

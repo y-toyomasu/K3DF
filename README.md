@@ -84,6 +84,12 @@ Refereeは3個のFlag Volumeをread-only、state Volumeだけをread-writeで使
 
 `ctf/flag-manifest.json`は値を含まないVolume対応定義です。`K3DF_CTF_DEMO_SEED`はK3ATと同じ値を使うDemo接続確認値で、既定値は`ValidationSeed`です。SeedはSecretやSecurity境界ではなく、`.env`実体、Flag、HintをGitへCommitしません。Referee APIはprivate Network上のNginx経由で`/ctf/referee/v1/submissions`と`/ctf/referee/v1/status`だけを公開し、raw Flag、Seed、Hintをresponse、ログ、stateへ記録しません。
 
+### Referee initialization diagnostics
+
+Refereeの起動時検査が失敗すると、stderrへ値やPathを含めない分類済み診断を出力して終了します。`category=flag-artifact`はFlag Volume内の配置、File種別、所有者、Group、Mode、Sizeまたは形式を、`category=referee-state`はstate Directoryまたはstate Fileを、`category=configuration`は非秘密な実行設定を示します。`target`、`check`、`expected`および`actual`で、問題箇所と検査結果を確認できます。
+
+Volume不正時にRefereeはVolume、Flagまたはstateを暗黙に削除・再生成しません。既存のInfrastructure運用Scriptで値を表示しない状態確認を行い、必要な場合だけ人間が明示してLifecycle操作を実行してください。通常の復旧手順として`docker compose down -v`は使用しません。
+
 ## 防御状況ダッシュボード
 
 K3DF は防御側の状況だけを扱います。独立した `dashboard` サービスが TCP ポート `8888` で稼働し、5 秒ごとに次を更新して可視化します。

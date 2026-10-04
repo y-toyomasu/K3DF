@@ -142,59 +142,77 @@ class RefereeTests(unittest.TestCase):
     def test_invalid_flag_permissions_and_state_directory_fail_closed(self):
         flag_path = self.root / "flags" / "flag-1" / "flag.value"
         self.flag_metadata[flag_path] = (0, 20001, 0o640)
-        with self.assertRaisesRegex(RuntimeError, "Invalid flag file"):
+        with self.assertRaisesRegex(RuntimeError, "category=flag-artifact; target=flag-1; check=ownership-and-mode"):
             self.module.Referee()
         self.flag_metadata[flag_path] = (0, 20001, 0o440)
         self.state_metadata = (10001, 10001, 0o755)
-        with self.assertRaisesRegex(RuntimeError, "Invalid referee state"):
+        with self.assertRaisesRegex(RuntimeError, "category=referee-state; target=state-directory; check=ownership-and-mode"):
             self.module.Referee()
 
-    def assert_safe_flag_failure(self):
+    def assert_safe_flag_failure(self, check):
         with self.assertRaises(RuntimeError) as context:
             self.module.Referee()
-        self.assertEqual(str(context.exception), "Invalid flag file.")
+        message = str(context.exception)
+        self.assertIn("category=flag-artifact; target=flag-1", message)
+        self.assertIn(f"check={check}", message)
         self.assertNotIn(str(self.root), str(context.exception))
         self.assertNotIn(self.flags[0], str(context.exception))
 
     def test_missing_directory_symlink_owner_mode_format_and_non_ascii_flags_are_redacted(self):
         flag_path = self.root / "flags" / "flag-1" / "flag.value"
         flag_path.unlink()
-        self.assert_safe_flag_failure()
+        self.assert_safe_flag_failure("placement")
 
         flag_path.write_text(self.flags[0], encoding="ascii")
         flag_path.unlink()
         flag_path.mkdir()
-        self.assert_safe_flag_failure()
+        self.assert_safe_flag_failure("file-type")
 
     def test_symlink_owner_mode_format_and_non_ascii_flags_are_redacted(self):
         flag_path = self.root / "flags" / "flag-1" / "flag.value"
-        flag_path.unlink()
         self.path_types[flag_path] = stat.S_IFLNK
-        self.assert_safe_flag_failure()
+        self.assert_safe_flag_failure("file-type")
         self.path_types.pop(flag_path)
 
         self.flag_metadata[flag_path] = (0, 0, 0o440)
-        self.assert_safe_flag_failure()
+        self.assert_safe_flag_failure("ownership-and-mode")
         self.flag_metadata[flag_path] = (0, 20001, 0o640)
-        self.assert_safe_flag_failure()
+        self.assert_safe_flag_failure("ownership-and-mode")
         self.flag_metadata[flag_path] = (0, 20001, 0o440)
         flag_path.write_text("K3DF{invalid}", encoding="ascii")
-        self.assert_safe_flag_failure()
+        self.assert_safe_flag_failure("format")
         flag_path.write_bytes(b"\xff")
-        self.assert_safe_flag_failure()
+        self.assert_safe_flag_failure("content-read")
 
     def test_duplicate_and_corrupt_state_are_redacted(self):
         flag_path = self.root / "flags" / "flag-2" / "flag.value"
         flag_path.write_text(self.flags[0], encoding="ascii")
         with self.assertRaises(RuntimeError) as duplicate:
             self.module.Referee()
-        self.assertEqual(str(duplicate.exception), "Duplicate flag values.")
+        self.assertIn("category=flag-artifact; target=flag-set; check=uniqueness", str(duplicate.exception))
         self.assertNotIn(self.flags[0], str(duplicate.exception))
 
         flag_path.write_text(self.flags[1], encoding="ascii")
         self.referee.state_path.write_text("{not-json", encoding="utf-8")
         with self.assertRaises(RuntimeError) as state_error:
             self.module.Referee()
-        self.assertEqual(str(state_error.exception), "Invalid referee state.")
+        self.assertIn("category=referee-state; target=state-file; check=content", str(state_error.exception))
         self.assertNotIn(str(self.referee.state_path), str(state_error.exception))
         self.assertNotIn("{not-json", str(state_error.exception))
+
+    def test_invalid_configuration_diagnostics_include_safe_values_only(self):
+        os.environ["K3DF_REFEREE_MAX_SUBMISSIONS"] = "0"
+        with self.assertRaises(RuntimeError) as invalid_budget:
+            self.module.Referee()
+        message = str(invalid_budget.exception)
+        self.assertIn("category=configuration; target=K3DF_REFEREE_MAX_SUBMISSIONS; check=range", message)
+        self.assertIn("actual=0", message)
+
+        os.environ["K3DF_CTF_DEMO_SEED"] = "\x01"
+        with self.assertRaises(RuntimeError) as invalid_seed:
+            self.module.Referee()
+        message = str(invalid_seed.exception)
+        self.assertIn("category=configuration; target=K3DF_CTF_DEMO_SEED; check=format", message)
+        self.assertNotIn("\x01", message)
+        self.assertNotIn(self.flags[0], message)
+        self.assertNotIn(str(self.root), message)
