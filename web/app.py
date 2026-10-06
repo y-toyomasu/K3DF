@@ -1,6 +1,8 @@
 from flask import Flask, Response, request
 import sqlite3
 import os
+import json
+import sys
 
 app = Flask(__name__)
 
@@ -14,7 +16,7 @@ def get_db():
 
 
 def init_db():
-    os.makedirs("/app/data", exist_ok=True)
+    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
 
     conn = get_db()
 
@@ -34,6 +36,14 @@ def init_db():
             email TEXT NOT NULL,
             company TEXT NOT NULL,
             secret TEXT NOT NULL
+        )
+    """)
+
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS ap2_ssh_credential (
+            id INTEGER PRIMARY KEY CHECK (id = 1),
+            username TEXT NOT NULL,
+            password TEXT NOT NULL
         )
     """)
 
@@ -58,6 +68,43 @@ def init_db():
 
     conn.commit()
     conn.close()
+
+
+def provision_ap2_ssh_credential(stream):
+    """Store only the SQLi-discoverable AP-02 credential, without logging it."""
+    try:
+        payload = json.load(stream)
+    except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+        raise ValueError("invalid AP-02 provisioning input") from exc
+    if not isinstance(payload, dict) or set(payload) != {"username", "password"}:
+        raise ValueError("invalid AP-02 provisioning input")
+    username = payload["username"]
+    password = payload["password"]
+    if username != "ap02user" or not isinstance(password, str) or len(password) < 32:
+        raise ValueError("invalid AP-02 provisioning input")
+    if any(char in password for char in "\r\n\0"):
+        raise ValueError("invalid AP-02 provisioning input")
+
+    conn = get_db()
+    try:
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS ap2_ssh_credential (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                username TEXT NOT NULL,
+                password TEXT NOT NULL
+            )
+        """)
+        conn.execute(
+            """INSERT INTO ap2_ssh_credential (id, username, password)
+               VALUES (?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 username=excluded.username, password=excluded.password""",
+            (1, username, password),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return True
 
 
 @app.route("/")
@@ -119,7 +166,13 @@ def customer():
     }
 
 
-if __name__ == "__main__":
+if __name__ == "__main__" and len(sys.argv) == 2 and sys.argv[1] == "provision-ap2":
+    try:
+        provision_ap2_ssh_credential(sys.stdin)
+    except (OSError, ValueError):
+        raise SystemExit("AP-02 provisioning failed")
+    print("AP-02 credential provisioned")
+elif __name__ == "__main__":
     init_db()
     app.run(
         host="0.0.0.0",

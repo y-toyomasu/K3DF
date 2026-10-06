@@ -90,6 +90,19 @@ Refereeの起動時検査が失敗すると、stderrへ値やPathを含めない
 
 Volume不正時にRefereeはVolume、Flagまたはstateを暗黙に削除・再生成しません。既存のInfrastructure運用Scriptで値を表示しない状態確認を行い、必要な場合だけ人間が明示してLifecycle操作を実行してください。通常の復旧手順として`docker compose down -v`は使用しません。
 
+### AP-02 Challenge SSH
+
+`challenge-ap2-ssh`はAP-02のCredential認証専用Runtimeで、Hostの`2222/tcp`だけを公開します。ContainerはUID/GID `10002:10002`、read-only root filesystem、全Capability削除で動作し、専用の`internal` Docker networkだけに接続します。Docker socket、Host bind mount、root login、sudo、shell/exec channel、PTY、SFTP/SCP、Agent/X11/TCP forwardingは提供しません。SSHアカウントは仮想identityで、通常のOSユーザーや対話Shellを作りません。
+
+K3DFとK3ATは、先にChallenge Webを起動してから人間がAP-02用Credentialを生成・投入します。運用Scriptは生成値を表示せず、標準入力を通じてWebのChallenge DBとSSH Runtime専用named volumeへ渡します。SQLi対象レコードは通常のCustomer ID参照から分離され、AP-02のSQLi経路からだけ発見できます。再実行時は新しいCredentialへ置き換えます。
+
+```bash
+docker compose up -d web
+python3 ctf/provision_ap2_ssh.py
+```
+
+Composeの`2222:2222`公開はHost上のPort公開を定義します。private LAN外からの到達制御は既存のprivate LAN運用境界に依存し、このCompose定義はHost firewallを変更せず、LAN外遮断を保証しません。`nginx`、`dashboard`およびAP-01の公開設定はこのRuntime追加では変更しません。
+
 ## 防御状況ダッシュボード
 
 K3DF は防御側の状況だけを扱います。独立した `dashboard` サービスが TCP ポート `8888` で稼働し、5 秒ごとに次を更新して可視化します。
