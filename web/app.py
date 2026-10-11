@@ -136,6 +136,7 @@ def sitemap():
         """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 <urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">
   <url><loc>/ap1/</loc></url>
+  <url><loc>/ap1/protected</loc></url>
 </urlset>
 """,
         content_type="application/xml",

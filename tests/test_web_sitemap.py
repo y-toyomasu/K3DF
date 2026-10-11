@@ -8,7 +8,7 @@ class WebSitemapTest(unittest.TestCase):
     def setUp(self):
         self.client = app.test_client()
 
-    def test_sitemap_is_valid_xml_and_lists_ap1(self):
+    def test_sitemap_is_valid_xml_and_lists_ap1_routes(self):
         response = self.client.get("/sitemap.xml")
 
         self.assertEqual(response.status_code, 200)
@@ -18,7 +18,7 @@ class WebSitemapTest(unittest.TestCase):
         self.assertEqual(root.tag, f"{namespace}urlset")
         self.assertEqual(
             [location.text for location in root.findall(f"{namespace}url/{namespace}loc")],
-            ["/ap1/"],
+            ["/ap1/", "/ap1/protected"],
         )
 
     def test_sitemap_does_not_disclose_bypass_or_secret_material(self):
