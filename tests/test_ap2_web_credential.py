@@ -1,7 +1,5 @@
 import importlib.util
 import hmac
-import io
-import json
 import os
 import secrets
 import sqlite3
@@ -33,7 +31,6 @@ def load_web_app():
     flask.request = object()
     spec = importlib.util.spec_from_file_location("ap2_web_app_test", APP_PATH)
     module = importlib.util.module_from_spec(spec)
-    assert spec.loader
     with mock.patch.dict(sys.modules, {"flask": flask}):
         spec.loader.exec_module(module)
     return module
@@ -42,89 +39,67 @@ def load_web_app():
 def load_ssh_credential():
     spec = importlib.util.spec_from_file_location("ap2_ssh_credential_test", SSH_CREDENTIAL_PATH)
     module = importlib.util.module_from_spec(spec)
-    assert spec.loader
     spec.loader.exec_module(module)
     return module
 
 
 class AP02WebCredentialTests(unittest.TestCase):
-    def test_environment_password_updates_only_ap2_record(self):
+    def test_password_rotation_updates_only_ap2_record_and_matches_ssh(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
-            module = load_web_app()
-            module.DB_PATH = str(Path(directory) / "crm.db")
+            web = load_web_app()
+            ssh = load_ssh_credential()
+            web.DB_PATH = str(Path(directory) / "crm.db")
+            first = secrets.token_urlsafe(36)
+            second = secrets.token_urlsafe(36)
+            with mock.patch.dict(os.environ, {web.AP2_PASSWORD_ENV: first}):
+                web.init_db()
+            db = sqlite3.connect(web.DB_PATH)
+            try:
+                before_users = db.execute("SELECT * FROM users ORDER BY id").fetchall()
+                before_customers = db.execute("SELECT * FROM customers ORDER BY id").fetchall()
+            finally:
+                db.close()
+            with mock.patch.dict(os.environ, {web.AP2_PASSWORD_ENV: second}):
+                web.init_db()
+                self.assertEqual(ssh.AP2_PASSWORD_ENV, web.AP2_PASSWORD_ENV)
+                self.assertTrue(ssh.verify_password("ap02user", second))
+                self.assertFalse(ssh.verify_password("ap02user", first))
+            db = sqlite3.connect(web.DB_PATH)
+            try:
+                self.assertEqual(db.execute("SELECT * FROM users ORDER BY id").fetchall(), before_users)
+                self.assertEqual(db.execute("SELECT * FROM customers ORDER BY id").fetchall(), before_customers)
+                row = db.execute("SELECT id, username, password FROM ap2_ssh_credential").fetchone()
+                self.assertEqual(db.execute("SELECT COUNT(*) FROM ap2_ssh_credential").fetchone()[0], 1)
+            finally:
+                db.close()
+            self.assertEqual(row[:2], (1, "ap02user"))
+            self.assertTrue(hmac.compare_digest(row[2], second))
+
+    def test_invalid_password_is_rejected_without_exposing_value(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            web = load_web_app()
+            web.DB_PATH = str(Path(directory) / "crm.db")
+            for invalid in ("", "short", "x" * 32 + "\n"):
+                with mock.patch.dict(os.environ, {web.AP2_PASSWORD_ENV: invalid}):
+                    with self.assertRaisesRegex(ValueError, "invalid AP-02 password configuration"):
+                        web.init_db()
+
+    def test_sqli_discovered_password_authenticates_ssh(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            web = load_web_app()
+            ssh = load_ssh_credential()
+            web.DB_PATH = str(Path(directory) / "crm.db")
             password = secrets.token_urlsafe(36)
-            with mock.patch.dict(os.environ, {module.AP2_PASSWORD_ENV: password}):
-                module.init_db()
-
-            connection = sqlite3.connect(module.DB_PATH)
-            try:
-                before_users = connection.execute("SELECT * FROM users ORDER BY id").fetchall()
-                before_customers = connection.execute("SELECT * FROM customers ORDER BY id").fetchall()
-            finally:
-                connection.close()
-
-            next_password = secrets.token_urlsafe(36)
-            with mock.patch.dict(os.environ, {module.AP2_PASSWORD_ENV: next_password}):
-                module.init_db()
-                ssh = load_ssh_credential()
-                self.assertEqual(ssh.AP2_PASSWORD_ENV, module.AP2_PASSWORD_ENV)
-                self.assertTrue(ssh.verify_password("ap02user", next_password, Path(directory) / "absent.json"))
-                self.assertFalse(ssh.verify_password("ap02user", password, Path(directory) / "absent.json"))
-            connection = sqlite3.connect(module.DB_PATH)
-            try:
-                self.assertEqual(connection.execute("SELECT * FROM users ORDER BY id").fetchall(), before_users)
-                self.assertEqual(connection.execute("SELECT * FROM customers ORDER BY id").fetchall(), before_customers)
-                ap2_rows = connection.execute("SELECT id, username, password FROM ap2_ssh_credential").fetchall()
-                self.assertEqual(len(ap2_rows), 1)
-                self.assertEqual(ap2_rows[0][:2], (1, "ap02user"))
-                self.assertTrue(hmac.compare_digest(ap2_rows[0][2], next_password))
-            finally:
-                connection.close()
-
-            with mock.patch.dict(os.environ, {module.AP2_PASSWORD_ENV: ""}):
-                with self.assertRaises(ValueError):
-                    module.init_db()
-
-    @mock.patch.dict(os.environ, {}, clear=True)
-    def test_credential_is_separate_from_normal_customer_rows_and_reprovisionable(self):
-        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
-            module = load_web_app()
-            module.DB_PATH = str(Path(directory) / "crm.db")
-            module.init_db()
-            connection = sqlite3.connect(module.DB_PATH)
-            try:
-                self.assertEqual(connection.execute("SELECT COUNT(*) FROM ap2_ssh_credential").fetchone()[0], 0)
-            finally:
-                connection.close()
-            first_password = secrets.token_urlsafe(36)
-            second_password = secrets.token_urlsafe(36)
-
-            module.provision_ap2_ssh_credential(
-                io.StringIO(json.dumps({"username": "ap02user", "password": first_password}))
-            )
-            module.provision_ap2_ssh_credential(
-                io.StringIO(json.dumps({"username": "ap02user", "password": second_password}))
-            )
-
-            connection = sqlite3.connect(module.DB_PATH)
-            try:
-                customer_count = connection.execute("SELECT COUNT(*) FROM customers").fetchone()[0]
-                ap2 = connection.execute("SELECT username, password FROM ap2_ssh_credential WHERE id = 1").fetchone()
-            finally:
-                connection.close()
-            self.assertEqual(customer_count, 3)
-            self.assertEqual(ap2[0], "ap02user")
-            self.assertTrue(hmac.compare_digest(ap2[1], second_password))
-
-    def test_rejects_unscoped_or_malformed_credential(self):
-        module = load_web_app()
-        for payload in (
-            "{}",
-            json.dumps({"username": "root", "password": secrets.token_urlsafe(36)}),
-            "not-json",
-        ):
-            with self.subTest(payload_kind=type(payload).__name__), self.assertRaises(ValueError):
-                module.provision_ap2_ssh_credential(io.StringIO(payload))
+            with mock.patch.dict(os.environ, {web.AP2_PASSWORD_ENV: password}):
+                web.init_db()
+                web.request = types.SimpleNamespace(args={
+                    "id": "-1 UNION SELECT 0,username,'','',password FROM ap2_ssh_credential"
+                })
+                rows = web.customer()["customers"]
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]["name"], "ap02user")
+                self.assertTrue(ssh.verify_password(rows[0]["name"], rows[0]["secret"]))
+                self.assertFalse(ssh.verify_password(rows[0]["name"], "wrong-password"))
 
 
 if __name__ == "__main__":

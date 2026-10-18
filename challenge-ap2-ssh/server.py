@@ -5,7 +5,7 @@ import sys
 
 import asyncssh
 
-from credential import CREDENTIAL_PATH, configured_password, verify_password, write_credential
+from credential import configured_password, verify_password
 
 
 class ChallengeSSHServer(asyncssh.SSHServer):
@@ -53,21 +53,18 @@ async def start_server(host="0.0.0.0"):
 
 
 async def serve():
-    has_environment_password = configured_password() is not None
-    while not has_environment_password and not CREDENTIAL_PATH.is_file():
-        await asyncio.sleep(1)
+    configured_password()
     await start_server()
     await asyncio.Future()
 
 
 def main():
     mode = sys.argv[1] if len(sys.argv) == 2 else ""
-    if mode == "provision":
-        write_credential(sys.stdin)
-        print("AP-02 SSH credential provisioned")
-        return
     if mode == "serve":
-        asyncio.run(serve())
+        try:
+            asyncio.run(serve())
+        except ValueError:
+            raise SystemExit("AP-02 password configuration is missing or invalid") from None
         return
     raise SystemExit("invalid operation")
 

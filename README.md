@@ -10,7 +10,7 @@ K3DF (K3 Defender Lab) は、Webアプリケーションの脆弱性を安全な
 
 ```text
 .
-├── compose.yaml       # WebアプリケーションとNginxのコンテナ定義
+├── docker-compose.yml # WebアプリケーションとNginxのコンテナ定義
 ├── web/               # 意図的に脆弱なFlaskアプリケーション
 ├── dashboard/         # 防御状況を可視化する独立アプリ
 ├── scanner/           # SQLインジェクション検証用スキャナー
@@ -22,17 +22,13 @@ K3DF (K3 Defender Lab) は、Webアプリケーションの脆弱性を安全な
 ## 前提条件
 
 - Docker Engine
-- Docker Compose
+- Docker Compose v1 (`docker-compose`)
 
 Raspberry Pi 上で環境を準備する場合は、[K3Defnder-K3Atacker-infra](https://github.com/y-toyomasu/K3Defnder-K3Atacker-infra) を利用できます。
 
 ## 起動
 
-```bash
-docker compose up --build -d
-```
-
-開発時は `env.example` を `.env` としてコピーし、`environment=dev` を設定します。`web/app.py` はコンテナへ共有され、変更時に Flask が自動で再起動します。
+`env.example` を `.env` としてコピーし、`K3DF_AP2_SSH_PASSWORD` に32文字以上の固有のPasswordを設定します。`.env`はGitへCommitしないでください。未設定または空の場合、Composeは環境変数名と設定不足を示して起動を止めます。短すぎる値や改行を含む値もWeb／SSHの起動時に値を表示せず拒否します。開発時は`environment=dev`を設定します。`web/app.py`はコンテナへ共有され、変更時にFlaskが自動で再起動します。
 
 ```bash
 docker-compose up --build
@@ -48,7 +44,7 @@ docker-compose up --build
 停止するには、以下を実行します。
 
 ```bash
-docker compose down
+docker-compose down
 ```
 
 ## スキャナー
@@ -78,7 +74,7 @@ logs/nginx/error.log
 
 ## CTF Referee volumes
 
-CTF RefereeはFlag原本と受理状態をDefender、Web、Dashboardから分離します。Flagは`k3df-ctf-flag-1`〜`k3df-ctf-flag-3`、受理状態は`k3df-referee-state`のexternal named volumeで管理します。これらのVolumeはInfrastructureの明示的なLifecycle操作が生成・検証し、K3DF Composeは不足Volumeを暗黙作成しません。通常のContainer再起動でFlagを生成・変更せず、`docker compose down -v`は使いません。
+CTF RefereeはFlag原本と受理状態をDefender、Web、Dashboardから分離します。Flagは`k3df-ctf-flag-1`〜`k3df-ctf-flag-3`、受理状態は`k3df-referee-state`のexternal named volumeで管理します。これらのVolumeはInfrastructureの明示的なLifecycle操作が生成・検証し、K3DF Composeは不足Volumeを暗黙作成しません。通常のContainer再起動でFlagを生成・変更せず、`docker-compose down -v`は使いません。
 
 Refereeは3個のFlag Volumeをread-only、state Volumeだけをread-writeで使用します。各Flagは`root:20001`、Mode `0440`の通常File、state Directoryは`10001:10001`、Mode `0700`でなければ、値を表示せず起動に失敗します。Refereeは固定UID/GID `10001:10001`とFlag reader補助Group `20001`で動作し、Hint、Docker socket、Host bind mountを受け取りません。将来のChallenge Consumerは担当する1個のFlag Volumeだけをread-onlyで使用します。
 
@@ -88,18 +84,13 @@ Refereeは3個のFlag Volumeをread-only、state Volumeだけをread-writeで使
 
 Refereeの起動時検査が失敗すると、stderrへ値やPathを含めない分類済み診断を出力して終了します。`category=flag-artifact`はFlag Volume内の配置、File種別、所有者、Group、Mode、Sizeまたは形式を、`category=referee-state`はstate Directoryまたはstate Fileを、`category=configuration`は非秘密な実行設定を示します。`target`、`check`、`expected`および`actual`で、問題箇所と検査結果を確認できます。
 
-Volume不正時にRefereeはVolume、Flagまたはstateを暗黙に削除・再生成しません。既存のInfrastructure運用Scriptで値を表示しない状態確認を行い、必要な場合だけ人間が明示してLifecycle操作を実行してください。通常の復旧手順として`docker compose down -v`は使用しません。
+Volume不正時にRefereeはVolume、Flagまたはstateを暗黙に削除・再生成しません。既存のInfrastructure運用Scriptで値を表示しない状態確認を行い、必要な場合だけ人間が明示してLifecycle操作を実行してください。通常の復旧手順として`docker-compose down -v`は使用しません。
 
 ### AP-02 Challenge SSH
 
 `challenge-ap2-ssh`はAP-02のCredential認証専用Runtimeで、Hostの`2222/tcp`だけを公開します。ContainerはUID/GID `10002:10002`、read-only root filesystem、全Capability削除で動作し、専用の`internal` Docker networkだけに接続します。Docker socket、Host bind mount、root login、sudo、shell/exec channel、PTY、SFTP/SCP、Agent/X11/TCP forwardingは提供しません。SSHアカウントは仮想identityで、通常のOSユーザーや対話Shellを作りません。
 
-K3DFとK3ATは、先にChallenge Webを起動してから人間がAP-02用Credentialを生成・投入します。運用Scriptは生成値を表示せず、標準入力を通じてWebのChallenge DBとSSH Runtime専用named volumeへ渡します。SQLi対象レコードは通常のCustomer ID参照から分離され、AP-02のSQLi経路からだけ発見できます。再実行時は新しいCredentialへ置き換えます。
-
-```bash
-docker compose up -d web
-python3 ctf/provision_ap2_ssh.py
-```
+AP-02のWebとSSHは`.env`の`K3DF_AP2_SSH_PASSWORD`を共通で使用します。上記の通常起動だけで追加Provisioningは不要です。Web起動時には既存のAP-02専用DBレコードだけを設定値へ更新し、他のDBレコードを維持します。SQLi対象レコードは通常のCustomer ID参照から分離され、AP-02のSQLi経路からだけ発見できます。PasswordはRun間で固定されるため、変更する場合は`.env`を更新し、WebとSSHを再作成してください。旧AP-02 Provisioning用のnamed volumeはCompose定義から外しますが、既存Volumeを自動削除しません。
 
 Composeの`2222:2222`公開はHost上のPort公開を定義します。private LAN外からの到達制御は既存のprivate LAN運用境界に依存し、このCompose定義はHost firewallを変更せず、LAN外遮断を保証しません。`nginx`、`dashboard`およびAP-01の公開設定はこのRuntime追加では変更しません。
 

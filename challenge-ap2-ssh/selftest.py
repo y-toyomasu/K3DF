@@ -1,11 +1,10 @@
 """Run an isolated synthetic authentication check without runtime credentials."""
 
 import asyncio
-import io
-import json
+import os
 import secrets
 
-from credential import write_credential
+from credential import AP2_PASSWORD_ENV
 from probe import verify
 from server import start_server
 
@@ -13,7 +12,7 @@ from server import start_server
 async def run():
     username = "ap02user"
     password = secrets.token_urlsafe(36)
-    write_credential(io.StringIO(json.dumps({"username": username, "password": password})))
+    os.environ[AP2_PASSWORD_ENV] = password
     listener = await start_server(host="127.0.0.1")
     try:
         await verify(username, password)

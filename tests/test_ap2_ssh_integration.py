@@ -1,5 +1,6 @@
-"""Run the non-secret SSH acceptance probe against a provisioned Compose runtime."""
+"""Run the non-secret SSH acceptance probe against an isolated runtime."""
 
+import os
 import subprocess
 import unittest
 from pathlib import Path
@@ -24,11 +25,9 @@ class AP02SSHRuntimeIntegrationTests(unittest.TestCase):
                 "--security-opt=no-new-privileges",
                 "--tmpfs",
                 "/tmp:rw,noexec,nosuid,nodev,size=1m",
-                "--tmpfs",
-                "/run/ap2-ssh:rw,noexec,nosuid,nodev,uid=10002,gid=10002,mode=0700",
                 "--entrypoint",
                 "python",
-                "k3df-challenge-ap2-ssh",
+                os.environ.get("K3DF_AP2_SSH_TEST_IMAGE", "k3df-challenge-ap2-ssh"),
                 "/app/selftest.py",
             ],
             cwd=ROOT,

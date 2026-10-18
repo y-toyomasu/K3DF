@@ -5,7 +5,7 @@ import secrets
 
 import asyncssh
 
-from credential import CREDENTIAL_PATH, _decode
+from credential import USERNAME, configured_password
 
 
 async def verify(username, password):
@@ -44,6 +44,5 @@ async def verify(username, password):
 
 
 if __name__ == "__main__":
-    username, password = _decode(CREDENTIAL_PATH.read_bytes())
-    asyncio.run(verify(username, password))
+    asyncio.run(verify(USERNAME, configured_password()))
     print("AP-02 SSH authentication and denial checks passed; no credential values emitted.")

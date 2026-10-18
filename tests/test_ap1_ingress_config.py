@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class Ap1IngressConfigurationTest(unittest.TestCase):
     def setUp(self):
-        self.compose = (ROOT / "compose.yaml").read_text(encoding="utf-8")
+        self.compose = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
         self.nginx = (ROOT / "nginx" / "nginx.conf").read_text(encoding="utf-8")
 
     def test_ap1_service_has_only_its_read_only_flag_volume_and_no_port(self):

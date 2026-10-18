@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   web:
     build:
@@ -5,6 +7,8 @@ services:
     container_name: k3df-web
     env_file:
       - .env
+    environment:
+      K3DF_AP2_SSH_PASSWORD: ${K3DF_AP2_SSH_PASSWORD:?Set K3DF_AP2_SSH_PASSWORD in .env before startup}
     expose:
       - "8080"
     volumes:
@@ -105,12 +109,12 @@ services:
     container_name: k3df-challenge-ap2-ssh
     user: "10002:10002"
     read_only: true
+    environment:
+      K3DF_AP2_SSH_PASSWORD: ${K3DF_AP2_SSH_PASSWORD:?Set K3DF_AP2_SSH_PASSWORD in .env before startup}
     expose:
       - "2222"
     ports:
       - "2222:2222"
-    volumes:
-      - k3df-ap2-ssh-runtime:/run/ap2-ssh
     networks:
       - ap2-ssh
     cap_drop:
@@ -120,27 +124,6 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=1m
     restart: unless-stopped
-
-  challenge-ap2-ssh-provision:
-    build:
-      context: ./challenge-ap2-ssh
-    container_name: k3df-challenge-ap2-ssh-provision
-    user: "10002:10002"
-    entrypoint: ["python", "server.py", "provision"]
-    profiles: ["provisioning"]
-    network_mode: none
-    stdin_open: true
-    tty: false
-    read_only: true
-    volumes:
-      - k3df-ap2-ssh-runtime:/run/ap2-ssh
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    tmpfs:
-      - /tmp:rw,noexec,nosuid,nodev,size=1m
-    restart: "no"
 
 volumes:
   k3df-ctf-flag-1:
@@ -155,8 +138,6 @@ volumes:
   k3df-referee-state:
     name: k3df-referee-state
     external: true
-  k3df-ap2-ssh-runtime:
-    name: k3df-ap2-ssh-runtime
 
 networks:
   ap2-ssh:
