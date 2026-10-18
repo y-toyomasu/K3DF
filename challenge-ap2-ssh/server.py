@@ -5,7 +5,7 @@ import sys
 
 import asyncssh
 
-from credential import CREDENTIAL_PATH, verify_password, write_credential
+from credential import CREDENTIAL_PATH, configured_password, verify_password, write_credential
 
 
 class ChallengeSSHServer(asyncssh.SSHServer):
@@ -53,7 +53,8 @@ async def start_server(host="0.0.0.0"):
 
 
 async def serve():
-    while not CREDENTIAL_PATH.is_file():
+    has_environment_password = configured_password() is not None
+    while not has_environment_password and not CREDENTIAL_PATH.is_file():
         await asyncio.sleep(1)
     await start_server()
     await asyncio.Future()

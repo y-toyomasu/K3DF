@@ -7,6 +7,7 @@ import sys
 app = Flask(__name__)
 
 DB_PATH = "/app/data/crm.db"
+AP2_PASSWORD_ENV = "K3DF_AP2_SSH_PASSWORD"
 
 
 def get_db():
@@ -64,6 +65,19 @@ def init_db():
                 (2, "Bob Suzuki", "bob@example.com", "XYZ Inc", "VIP-002"),
                 (3, "Carol Sato", "carol@example.com", "Demo Ltd", "SECRET-003"),
             ],
+        )
+
+    password = os.environ.get(AP2_PASSWORD_ENV)
+    if password is not None:
+        if len(password) < 32 or any(char in password for char in "\r\n\0"):
+            conn.close()
+            raise ValueError("invalid AP-02 password configuration")
+        conn.execute(
+            """INSERT INTO ap2_ssh_credential (id, username, password)
+               VALUES (1, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET
+                 username=excluded.username, password=excluded.password""",
+            ("ap02user", password),
         )
 
     conn.commit()

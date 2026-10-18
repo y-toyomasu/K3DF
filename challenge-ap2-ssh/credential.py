@@ -11,6 +11,14 @@ from pathlib import Path
 
 CREDENTIAL_PATH = Path("/run/ap2-ssh/credential.json")
 USERNAME = "ap02user"
+AP2_PASSWORD_ENV = "K3DF_AP2_SSH_PASSWORD"
+
+
+def configured_password() -> str | None:
+    password = os.environ.get(AP2_PASSWORD_ENV)
+    if password is not None and (len(password) < 32 or any(char in password for char in "\r\n\0")):
+        raise ValueError("invalid AP-02 password configuration")
+    return password
 
 
 def _decode(raw: bytes) -> tuple[str, str]:
@@ -34,10 +42,14 @@ def verify_password(username: str, password: str, path: Path = CREDENTIAL_PATH) 
     if username != USERNAME or not isinstance(password, str):
         return False
     try:
-        metadata = path.stat()
-        if not stat.S_ISREG(metadata.st_mode) or (os.name == "posix" and metadata.st_mode & 0o077):
-            return False
-        expected_user, expected_password = _decode(path.read_bytes())
+        expected_password = configured_password()
+        if expected_password is None:
+            metadata = path.stat()
+            if not stat.S_ISREG(metadata.st_mode) or (os.name == "posix" and metadata.st_mode & 0o077):
+                return False
+            expected_user, expected_password = _decode(path.read_bytes())
+        else:
+            expected_user = USERNAME
     except (OSError, ValueError):
         return False
     return hmac.compare_digest(username, expected_user) and hmac.compare_digest(password, expected_password)

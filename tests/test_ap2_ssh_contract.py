@@ -7,6 +7,7 @@ import stat
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,6 +19,19 @@ SPEC.loader.exec_module(credential)
 
 
 class AP02SSHCredentialContractTests(unittest.TestCase):
+    def test_environment_password_authenticates_without_runtime_file(self):
+        with tempfile.TemporaryDirectory(dir=ROOT) as directory:
+            absent_path = Path(directory) / "absent.json"
+            password = secrets.token_urlsafe(36)
+            with mock.patch.dict(os.environ, {credential.AP2_PASSWORD_ENV: password}):
+                self.assertTrue(credential.verify_password("ap02user", password, absent_path))
+                self.assertFalse(credential.verify_password("ap02user", "wrong-password", absent_path))
+                self.assertFalse(credential.verify_password("wrong-user", password, absent_path))
+            self.assertFalse(credential.verify_password("ap02user", password, absent_path))
+            with mock.patch.dict(os.environ, {credential.AP2_PASSWORD_ENV: ""}):
+                self.assertFalse(credential.verify_password("ap02user", password, absent_path))
+
+    @mock.patch.dict(os.environ, {}, clear=True)
     def test_private_credential_is_written_atomically_and_checked(self):
         with tempfile.TemporaryDirectory(dir=ROOT) as directory:
             path = Path(directory) / "run" / "credential.json"
