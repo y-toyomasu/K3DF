@@ -117,6 +117,7 @@ services:
       - "2222:2222"
     networks:
       - ap2-ssh
+      - default
     cap_drop:
       - ALL
     security_opt:

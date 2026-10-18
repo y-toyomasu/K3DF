@@ -88,7 +88,7 @@ Volume不正時にRefereeはVolume、Flagまたはstateを暗黙に削除・再�
 
 ### AP-02 Challenge SSH
 
-`challenge-ap2-ssh`はAP-02のCredential認証専用Runtimeで、Hostの`2222/tcp`だけを公開します。ContainerはUID/GID `10002:10002`、read-only root filesystem、全Capability削除で動作し、専用の`internal` Docker networkだけに接続します。Docker socket、Host bind mount、root login、sudo、shell/exec channel、PTY、SFTP/SCP、Agent/X11/TCP forwardingは提供しません。SSHアカウントは仮想identityで、通常のOSユーザーや対話Shellを作りません。
+`challenge-ap2-ssh`はAP-02のCredential認証専用Runtimeで、Hostの`2222/tcp`だけを公開します。ContainerはUID/GID `10002:10002`、read-only root filesystem、全Capability削除で動作し、専用の`internal` Docker networkとComposeのdefault networkに接続します。default network上のコンテナから`challenge-ap2-ssh:2222`へ接続できます。Docker側でOutbound通信の遮断は保証しません。Docker socket、Host bind mount、root login、sudo、shell/exec channel、PTY、SFTP/SCP、Agent/X11/TCP forwardingは提供しません。SSHアカウントは仮想identityで、通常のOSユーザーや対話Shellを作りません。
 
 AP-02のWebとSSHは`.env`の`K3DF_AP2_SSH_PASSWORD`を共通で使用します。上記の通常起動だけで追加Provisioningは不要です。Web起動時には既存のAP-02専用DBレコードだけを設定値へ更新し、他のDBレコードを維持します。SQLi対象レコードは通常のCustomer ID参照から分離され、AP-02のSQLi経路からだけ発見できます。PasswordはRun間で固定されるため、変更する場合は`.env`を更新し、WebとSSHを再作成してください。旧AP-02 Provisioning用のnamed volumeはCompose定義から外しますが、既存Volumeを自動削除しません。
 
